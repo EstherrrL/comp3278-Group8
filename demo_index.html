@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>HKUgram - Social Media</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui; }
+    .feed { max-width: 600px; margin: 0 auto; }
+  </style>
+</head>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-4xl font-bold text-red-600 text-center mb-8">🏫 HKUgram</h1>
+
+    <!-- 发帖区 -->
+    <div class="bg-white p-6 rounded-2xl shadow mb-8">
+      <h2 class="text-xl font-semibold mb-4">发新帖</h2>
+      <input id="username" placeholder="你的用户名" class="w-full border p-3 rounded-xl mb-3">
+      <textarea id="text" placeholder="说点什么..." class="w-full border p-3 rounded-xl mb-3 h-24"></textarea>
+      <input id="image" placeholder="图片URL (可选)" class="w-full border p-3 rounded-xl mb-3">
+      <button onclick="createPost()" 
+              class="bg-red-600 text-white px-8 py-3 rounded-2xl font-medium hover:bg-red-700">
+        发布帖子
+      </button>
+    </div>
+
+    <!-- Feed -->
+    <div class="feed">
+      <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
+        📢 最新动态 
+        <button onclick="loadFeed()" class="text-sm bg-gray-200 px-4 py-1 rounded-3xl text-gray-700 hover:bg-gray-300">刷新</button>
+      </h2>
+      <div id="feed-container" class="space-y-6"></div>
+    </div>
+
+    <!-- Vanna Text-to-SQL 聊天框 -->
+    <div class="fixed bottom-6 right-6 bg-white shadow-2xl rounded-3xl w-96 overflow-hidden">
+      <div class="bg-red-600 text-white p-4 font-medium">🤖 Vanna AI - 自然语言查数据库</div>
+      <div id="chat-messages" class="h-96 p-4 overflow-y-auto bg-gray-50 space-y-3"></div>
+      <div class="p-4 border-t flex gap-2">
+        <input id="chat-input" placeholder="例如：显示点赞最多的帖子" 
+               class="flex-1 border rounded-3xl px-5 py-3 focus:outline-none">
+        <button onclick="sendToVanna()" 
+                class="bg-red-600 text-white px-8 rounded-3xl">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://127.0.0.1:8000";
+
+    async function loadFeed() {
+      const res = await fetch(`${API_BASE}/feed`);
+      const posts = await res.json();
+      const container = document.getElementById("feed-container");
+      container.innerHTML = "";
+
+      posts.forEach(post => {
+        const div = document.createElement("div");
+        div.className = "bg-white p-6 rounded-3xl shadow";
+        div.innerHTML = `
+          <div class="flex justify-between">
+            <div class="font-semibold">@${post.username}</div>
+            <div class="text-sm text-gray-500">${post.created_at}</div>
+          </div>
+          <p class="my-3">${post.text_content || ""}</p>
+          ${post.image_url ? `<img src="${post.image_url}" class="rounded-2xl w-full">` : ""}
+          <div class="flex items-center gap-3 mt-4">
+            <button onclick="likePost(${post.id}, '${post.username}')" 
+                    class="flex items-center gap-1 text-red-500 hover:text-red-600">
+              ❤️ <span id="like-count-${post.id}">${post.like_count}</span>
+            </button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function createPost() {
+      const username = document.getElementById("username").value;
+      const text = document.getElementById("text").value;
+      const image = document.getElementById("image").value;
+
+      await fetch(`${API_BASE}/posts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, text_content: text, image_url: image })
+      });
+      alert("✅ 帖子发布成功！");
+      loadFeed();
+    }
+
+    async function likePost(postId, username) {
+      await fetch(`${API_BASE}/likes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, post_id: postId })
+      });
+      loadFeed();   // 刷新点赞数
+    }
+
+    // Vanna 聊天
+    async function sendToVanna() {
+      const input = document.getElementById("chat-input");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      const chat = document.getElementById("chat-messages");
+      chat.innerHTML += `<div class="text-right"><div class="inline-block bg-red-100 px-4 py-2 rounded-3xl">${msg}</div></div>`;
+      input.value = "";
+
+      // Vanna 默认聊天接口（课程 demo 用的）
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: msg, stream: false })
+      });
+      const data = await res.json();
+      chat.innerHTML += `<div class="text-left"><div class="inline-block bg-white px-4 py-2 rounded-3xl shadow">${data.response || data}</div></div>`;
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // 页面加载时自动显示 Feed
+    window.onload = () => {
+      loadFeed();
+    };
+  </script>
+</body>
+</html>
