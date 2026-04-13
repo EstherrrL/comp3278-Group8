@@ -4,146 +4,215 @@
   <meta charset="UTF-8">
   <title>HKUgram - Social Media</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style> body { font-family: system-ui; } .feed { max-width: 600px; margin: 0 auto; } </style>
+  <style>
+    body { font-family: system-ui; }
+    .feed { max-width: 620px; margin: 0 auto; }
+    .sort-btn.active { background-color: #dc2626 !important; color: white !important; }
+  </style>
 </head>
 <body class="bg-gray-100 p-4">
   <div class="max-w-4xl mx-auto">
     <h1 class="text-4xl font-bold text-red-600 text-center mb-8">🏫 HKUgram</h1>
 
+    <!-- 用户切换区域 -->
+    <div class="bg-white p-4 rounded-3xl shadow mb-6 flex items-center gap-3">
+      <span class="font-medium">当前用户：</span>
+      <select id="user-select" class="flex-1 border p-3 rounded-2xl text-lg"></select>
+      <input id="new-username" placeholder="新用户名" class="border p-3 rounded-2xl w-48">
+      <button onclick="createNewUser()" class="bg-green-600 text-white px-6 py-3 rounded-2xl font-medium">创建用户</button>
+    </div>
+
     <!-- 发帖区 -->
     <div class="bg-white p-6 rounded-3xl shadow mb-8">
       <h2 class="text-xl font-semibold mb-4">发新帖</h2>
-      <input id="username" placeholder="用户名" class="w-full border p-3 rounded-2xl mb-3">
       <textarea id="text" placeholder="说点什么..." class="w-full border p-3 rounded-2xl mb-3 h-24"></textarea>
       <input id="image" placeholder="图片URL (可选)" class="w-full border p-3 rounded-2xl mb-3">
-      <button onclick="createPost()" class="bg-red-600 text-white px-8 py-3 rounded-2xl font-medium">发布</button>
+      <button onclick="createPost()" class="bg-red-600 text-white px-8 py-3 rounded-2xl font-medium w-full">发布帖子</button>
     </div>
 
-    <!-- 排序 + 用户历史 -->
-    <div class="flex gap-3 mb-6">
-      <button onclick="loadFeed('time')" class="flex-1 bg-white px-6 py-3 rounded-3xl font-medium">按时间排序</button>
-      <button onclick="loadFeed('popularity')" class="flex-1 bg-white px-6 py-3 rounded-3xl font-medium">按人气排序</button>
-      <input id="search-user" placeholder="查看某人历史 (输入用户名)" class="flex-1 border p-3 rounded-3xl">
-      <button onclick="loadUserPosts()" class="bg-red-600 text-white px-8 rounded-3xl">搜索</button>
+    <!-- 搜索 + 排序 -->
+    <div class="flex gap-3 mb-8 flex-wrap">
+      <input id="search-input" placeholder="搜索帖子关键词" class="flex-1 border p-3 rounded-3xl">
+      <button onclick="searchPosts()" class="bg-red-600 text-white px-8 rounded-3xl">搜索</button>
+      <button id="btn-time" onclick="loadFeed('time')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按时间排序</button>
+      <button id="btn-pop" onclick="loadFeed('popularity')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按人气排序</button>
     </div>
 
     <!-- Feed -->
     <div id="feed-container" class="space-y-8"></div>
   </div>
 
-  <!-- Vanna 聊天框 -->
+  <!-- Vanna AI -->
   <div class="fixed bottom-6 right-6 bg-white shadow-2xl rounded-3xl w-96 overflow-hidden">
-    <div class="bg-red-600 text-white p-4">🤖 Vanna AI</div>
+    <div class="bg-red-600 text-white p-4 font-medium">🤖 Vanna AI - 自然语言查询</div>
     <div id="chat-messages" class="h-96 p-4 overflow-y-auto bg-gray-50"></div>
     <div class="p-4 border-t flex gap-2">
-      <input id="chat-input" placeholder="自然语言查询..." class="flex-1 border rounded-3xl px-5 py-3">
+      <input id="chat-input" placeholder="例如：显示点赞最多的帖子" class="flex-1 border rounded-3xl px-5 py-3">
       <button onclick="sendToVanna()" class="bg-red-600 text-white px-8 rounded-3xl">发送</button>
     </div>
   </div>
 
   <script>
     const API_BASE = "http://127.0.0.1:8000";
+    let currentUsername = "";
+
+    // 加载已有用户并填充下拉框
+    async function loadUsers() {
+      const res = await fetch(`${API_BASE}/users`);
+      const users = await res.json();
+      const select = document.getElementById("user-select");
+      select.innerHTML = "";
+      users.forEach(user => {
+        const option = document.createElement("option");
+        option.value = user;
+        option.textContent = user;
+        select.appendChild(option);
+      });
+      if (users.length > 0) {
+        currentUsername = users[0];
+        select.value = currentUsername;
+      }
+    }
+
+    // 创建新用户
+    async function createNewUser() {
+      const newName = document.getElementById("new-username").value.trim();
+      if (!newName) return alert("请输入新用户名");
+      const res = await fetch(`${API_BASE}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newName })
+      });
+      const data = await res.json();
+      alert(data.message);
+      loadUsers();
+      document.getElementById("new-username").value = "";
+    }
+
+    // 切换用户
+    document.getElementById("user-select").addEventListener("change", function() {
+      currentUsername = this.value;
+    });
+
+    async function createPost() {
+      const content = document.getElementById("text").value.trim();
+      const image_url = document.getElementById("image").value.trim();
+      if (!content) return alert("请输入内容");
+
+      const res = await fetch(`${API_BASE}/posts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: currentUsername, content, image_url })
+      });
+
+      if (res.ok) {
+        alert("✅ 帖子发布成功！");
+        document.getElementById("text").value = "";
+        loadFeed();
+      } else {
+        alert("❌ 发布失败");
+      }
+    }
+
+    async function toggleLike(postId) {
+      await fetch(`${API_BASE}/likes/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: currentUsername, post_id: postId })
+      });
+      loadFeed();
+    }
+
+    async function postComment(postId) {
+      const content = document.getElementById(`comment-input-${postId}`).value.trim();
+      if (!content) return;
+      await fetch(`${API_BASE}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: currentUsername, post_id: postId, content })
+      });
+      document.getElementById(`comment-input-${postId}`).value = "";
+      loadComments(postId);
+    }
 
     async function loadFeed(sort = "time") {
+      document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+      if (sort === "time") document.getElementById("btn-time").classList.add('active');
+      else document.getElementById("btn-pop").classList.add('active');
+
       const res = await fetch(`${API_BASE}/feed?sort=${sort}`);
       const posts = await res.json();
       renderFeed(posts);
     }
 
-    async function loadUserPosts() {
-      const username = document.getElementById("search-user").value.trim();
-      if (!username) return alert("请输入用户名");
-      const res = await fetch(`${API_BASE}/users/${username}/posts`);
+    async function searchPosts() {
+      const keyword = document.getElementById("search-input").value.trim();
+      const res = await fetch(`${API_BASE}/feed?search=${encodeURIComponent(keyword)}`);
       const posts = await res.json();
-      renderFeed(posts, true);   // true 表示是用户历史
+      renderFeed(posts);
     }
 
-    function renderFeed(posts, isUserHistory = false) {
+    function renderFeed(posts) {
       const container = document.getElementById("feed-container");
-      container.innerHTML = isUserHistory ? `<h2 class="text-2xl font-semibold mb-4">📜 ${posts[0]?.username || ''} 的发帖历史</h2>` : "";
-
+      container.innerHTML = "";
       posts.forEach(post => {
         const div = document.createElement("div");
         div.className = "bg-white p-6 rounded-3xl shadow";
         div.innerHTML = `
-          <div class="flex justify-between"><div class="font-semibold">@${post.username || ''}</div><div class="text-sm text-gray-500">${post.created_at}</div></div>
+          <div class="flex justify-between">
+            <div class="font-semibold">@${post.username}</div>
+            <div class="text-sm text-gray-500">${post.created_at}</div>
+          </div>
           <p class="my-3">${post.text_content || post.content || ""}</p>
           ${post.image_url ? `<img src="${post.image_url}" class="rounded-2xl w-full mb-4">` : ""}
-          
-          <!-- Toggle Like -->
-          <button onclick="toggleLike(${post.id}, '${post.username || ''}')" class="flex items-center gap-1 text-red-500 hover:text-red-600">
-            ❤️ <span id="like-count-${post.id}">${post.like_count}</span>
-          </button>
+          <button onclick="toggleLike(${post.id})" class="text-3xl text-red-500">❤️</button>
+          <span class="ml-2 text-xl" id="like-count-${post.id}">${post.like_count}</span>
 
-          <!-- Comment Input -->
           <div class="mt-6">
             <input id="comment-input-${post.id}" placeholder="写评论..." class="w-full border p-3 rounded-2xl text-sm">
             <button onclick="postComment(${post.id})" class="mt-2 bg-gray-200 px-6 py-2 rounded-2xl text-sm">发送评论</button>
           </div>
-
-          <!-- Comments Area -->
-          <div id="comments-${post.id}" class="mt-4 text-sm space-y-2"></div>
+          <div id="comments-${post.id}" class="mt-4 space-y-2"></div>
         `;
         container.appendChild(div);
         loadComments(post.id);
       });
     }
 
-    async function toggleLike(postId, username) {
-      await fetch(`${API_BASE}/likes/toggle`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({username, post_id: postId})
-      });
-      loadFeed();   // 刷新
-    }
-
-    async function postComment(postId) {
-      const username = document.getElementById("username").value || "alice";
-      const content = document.getElementById(`comment-input-${postId}`).value;
-      if (!content) return;
-      await fetch(`${API_BASE}/comments`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({username, post_id: postId, content})
-      });
-      document.getElementById(`comment-input-${postId}`).value = "";
-      loadComments(postId);
-    }
-
     async function loadComments(postId) {
       const res = await fetch(`${API_BASE}/posts/${postId}/comments`);
       const comments = await res.json();
-      const container = document.getElementById(`comments-${postId}`);
+      const container = document.getElementById(`comments-${post.id}`);
       container.innerHTML = comments.map(c => `
-        <div class="pl-4 border-l-2">
+        <div class="pl-4 border-l-2 border-gray-200 text-sm">
           <span class="font-medium">@${c.username}</span>: ${c.content}
           <span class="text-xs text-gray-400 ml-2">${c.timestamp}</span>
         </div>
       `).join("");
     }
 
-    // Vanna 聊天
     async function sendToVanna() {
       const input = document.getElementById("chat-input");
       const msg = input.value.trim();
       if (!msg) return;
       const chat = document.getElementById("chat-messages");
-      chat.innerHTML += `<div class="text-right"><div class="inline-block bg-red-100 px-4 py-2 rounded-3xl">${msg}</div></div>`;
+      chat.innerHTML += `<div class="text-right mb-2"><span class="bg-red-100 px-4 py-2 rounded-3xl">${msg}</span></div>`;
       input.value = "";
-      
-      // Vanna 默认聊天接口（课程 demo 用的）
       const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: msg, stream: false })
+        body: JSON.stringify({ question: msg })
       });
       const data = await res.json();
-      chat.innerHTML += `<div class="text-left"><div class="inline-block bg-white px-4 py-2 rounded-3xl shadow">${data.response || data}</div></div>`;
+      chat.innerHTML += `<div class="text-left"><span class="bg-white px-4 py-2 rounded-3xl shadow">${data.response}</span></div>`;
       chat.scrollTop = chat.scrollHeight;
     }
 
-    window.onload = () => loadFeed("time");
+    // 初始化
+    window.onload = () => {
+      loadUsers();
+      loadFeed("time");
+    };
   </script>
 </body>
 </html>
