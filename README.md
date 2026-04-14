@@ -417,6 +417,24 @@ omit it (or set it to `null`) for a top-level comment.
 
 ---
 
+#### `DELETE /comments/{comment_id}`
+Delete one of the current user's own comments. Replies are also deleted automatically
+if the removed comment is a parent comment, because the database foreign key uses
+`ON DELETE CASCADE`.
+
+**Request body**
+```json
+{ "username": "carol" }
+```
+**Response**
+```json
+{ "message": "评论已删除" }
+```
+**Error** — `404` if the username or comment does not exist.
+**Error** — `403` if the user tries to delete someone else's comment.
+
+---
+
 #### `GET /feed?sort=time&limit=20`
 Return a list of posts sorted by time (default) or popularity.
 

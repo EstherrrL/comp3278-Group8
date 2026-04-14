@@ -1,218 +1,325 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>HKUgram - Social Media</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HKUgram Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ember: "#c85a1b"
+          },
+          boxShadow: {
+            card: "0 24px 60px rgba(31, 41, 55, 0.10)"
+          }
+        }
+      }
+    };
+  </script>
   <style>
-    body { font-family: system-ui; }
-    .feed { max-width: 620px; margin: 0 auto; }
-    .sort-btn.active { background-color: #dc2626 !important; color: white !important; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(239, 159, 89, 0.40), transparent 20%),
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.70), transparent 24%),
+        linear-gradient(180deg, #f5d5bb 0%, #fff8f0 56%, #fffdf9 100%);
+      color: #1f2937;
+    }
+
+    .glass {
+      background: rgba(255, 250, 244, 0.92);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(200, 90, 27, 0.14);
+    }
+
+    .toggle-active {
+      background: linear-gradient(135deg, #c85a1b 0%, #ef9f59 100%);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 12px 30px rgba(200, 90, 27, 0.18);
+    }
+
+    .message-success {
+      background: rgba(5, 150, 105, 0.10);
+      color: #059669;
+    }
+
+    .message-error {
+      background: rgba(220, 38, 38, 0.10);
+      color: #dc2626;
+    }
+
+    .message-neutral {
+      background: rgba(255, 255, 255, 0.88);
+      color: #667085;
+    }
+
+    .hidden-panel {
+      display: none;
+    }
   </style>
 </head>
-<body class="bg-gray-100 p-4">
-  <div class="max-w-4xl mx-auto">
-    <h1 class="text-4xl font-bold text-red-600 text-center mb-8">🏫 HKUgram</h1>
+<body>
+  <main class="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-6 sm:px-6 lg:px-8">
+    <section class="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div class="flex flex-col justify-center rounded-[2.5rem] bg-gradient-to-br from-orange-500 via-orange-400 to-amber-300 p-8 text-white shadow-card sm:p-10">
+        <p class="text-sm font-extrabold uppercase tracking-[0.3em] text-orange-100">HKUgram</p>
+        <h1 class="mt-5 max-w-lg text-4xl font-extrabold leading-tight sm:text-5xl">Sign in or register first, then enter the main app.</h1>
+        <p class="mt-5 max-w-xl text-sm leading-7 text-orange-50 sm:text-base">
+          This page only handles authentication. After a successful sign-in, you will be redirected to the main app page instead of seeing both screens stacked together.
+        </p>
+        <div class="mt-8 grid gap-4 sm:grid-cols-3">
+          <div class="rounded-[1.5rem] bg-white/16 p-4">
+            <div class="text-xs uppercase tracking-[0.2em] text-orange-100">Step 1</div>
+              <div class="mt-2 text-lg font-bold">Sign In or Register</div>
+          </div>
+          <div class="rounded-[1.5rem] bg-white/16 p-4">
+            <div class="text-xs uppercase tracking-[0.2em] text-orange-100">Step 2</div>
+              <div class="mt-2 text-lg font-bold">Go to App</div>
+          </div>
+          <div class="rounded-[1.5rem] bg-white/16 p-4">
+            <div class="text-xs uppercase tracking-[0.2em] text-orange-100">Step 3</div>
+              <div class="mt-2 text-lg font-bold">Use Features</div>
+          </div>
+        </div>
+      </div>
 
-    <!-- 用户切换区域 -->
-    <div class="bg-white p-4 rounded-3xl shadow mb-6 flex items-center gap-3">
-      <span class="font-medium">当前用户：</span>
-      <select id="user-select" class="flex-1 border p-3 rounded-2xl text-lg"></select>
-      <input id="new-username" placeholder="新用户名" class="border p-3 rounded-2xl w-48">
-      <button onclick="createNewUser()" class="bg-green-600 text-white px-6 py-3 rounded-2xl font-medium">创建用户</button>
-    </div>
+      <div class="glass rounded-[2.5rem] p-6 shadow-card sm:p-8">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-extrabold uppercase tracking-[0.16em] text-ember">Entry</p>
+            <h2 class="mt-2 text-3xl font-extrabold">Welcome Back</h2>
+          </div>
+          <button id="check-backend-button" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Check Backend</button>
+        </div>
 
-    <!-- 发帖区 -->
-    <div class="bg-white p-6 rounded-3xl shadow mb-8">
-      <h2 class="text-xl font-semibold mb-4">发新帖</h2>
-      <textarea id="text" placeholder="说点什么..." class="w-full border p-3 rounded-2xl mb-3 h-24"></textarea>
-      <input id="image" placeholder="图片URL (可选)" class="w-full border p-3 rounded-2xl mb-3">
-      <button onclick="createPost()" class="bg-red-600 text-white px-8 py-3 rounded-2xl font-medium w-full">发布帖子</button>
-    </div>
+        <div id="auth-status" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">Make sure the backend is running first.</div>
 
-    <!-- 搜索 + 排序 -->
-    <div class="flex gap-3 mb-8 flex-wrap">
-      <input id="search-input" placeholder="搜索帖子关键词" class="flex-1 border p-3 rounded-3xl">
-      <button onclick="searchPosts()" class="bg-red-600 text-white px-8 rounded-3xl">搜索</button>
-      <button id="btn-time" onclick="loadFeed('time')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按时间排序</button>
-      <button id="btn-pop" onclick="loadFeed('popularity')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按人气排序</button>
-    </div>
+        <div class="mt-6 flex rounded-full bg-white p-1 ring-1 ring-orange-100">
+          <button data-auth-tab="login" class="auth-tab toggle-active w-1/2 rounded-full px-4 py-3 text-sm font-bold transition">Sign In</button>
+          <button data-auth-tab="register" class="auth-tab w-1/2 rounded-full px-4 py-3 text-sm font-bold text-slate-600 transition">Register</button>
+        </div>
 
-    <!-- Feed -->
-    <div id="feed-container" class="space-y-8"></div>
-  </div>
+        <section id="login-panel" class="mt-6 space-y-5">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="login-username">Username</label>
+            <input id="login-username" class="w-full rounded-[1.5rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Enter an existing username from the database">
+          </div>
+          <div>
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <label class="block text-sm font-semibold text-slate-700">Existing Users</label>
+              <button id="refresh-login-users" class="text-sm font-semibold text-slate-500 transition hover:text-ember">Refresh List</button>
+            </div>
+            <div id="login-user-list" class="flex flex-wrap gap-2"></div>
+          </div>
+          <button id="login-button" class="w-full rounded-[1.5rem] bg-slate-900 px-5 py-4 text-base font-bold text-white transition hover:bg-slate-700">Sign In to App</button>
+        </section>
 
-  <!-- Vanna AI -->
-  <div class="fixed bottom-6 right-6 bg-white shadow-2xl rounded-3xl w-96 overflow-hidden">
-    <div class="bg-red-600 text-white p-4 font-medium">🤖 Vanna AI - 自然语言查询</div>
-    <div id="chat-messages" class="h-96 p-4 overflow-y-auto bg-gray-50"></div>
-    <div class="p-4 border-t flex gap-2">
-      <input id="chat-input" placeholder="例如：显示点赞最多的帖子" class="flex-1 border rounded-3xl px-5 py-3">
-      <button onclick="sendToVanna()" class="bg-red-600 text-white px-8 rounded-3xl">发送</button>
-    </div>
-  </div>
+        <section id="register-panel" class="hidden-panel mt-6 space-y-5">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="register-username">New Username</label>
+            <input id="register-username" class="w-full rounded-[1.5rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Create a new username">
+          </div>
+          <div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm leading-7 text-slate-600 ring-1 ring-orange-100">
+            After registration, you will be redirected straight to the main app.
+          </div>
+          <button id="register-button" class="w-full rounded-[1.5rem] bg-emerald-600 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-500">Register and Enter App</button>
+        </section>
+      </div>
+    </section>
+  </main>
 
   <script>
     const API_BASE = "http://127.0.0.1:8000";
-    let currentUsername = "";
+    const USERS_STORAGE_KEY = "hkugram-known-users";
+    const SESSION_STORAGE_KEY = "hkugram-active-user";
+    const APP_PAGE = "./demo_app.html";
 
-    // 加载已有用户并填充下拉框
-    async function loadUsers() {
-      const res = await fetch(`${API_BASE}/users`);
-      const users = await res.json();
-      const select = document.getElementById("user-select");
-      select.innerHTML = "";
-      users.forEach(user => {
-        const option = document.createElement("option");
-        option.value = user;
-        option.textContent = user;
-        select.appendChild(option);
-      });
-      if (users.length > 0) {
-        currentUsername = users[0];
-        select.value = currentUsername;
-      }
-    }
-
-    // 创建新用户
-    async function createNewUser() {
-      const newName = document.getElementById("new-username").value.trim();
-      if (!newName) return alert("请输入新用户名");
-      const res = await fetch(`${API_BASE}/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: newName })
-      });
-      const data = await res.json();
-      alert(data.message);
-      loadUsers();
-      document.getElementById("new-username").value = "";
-    }
-
-    // 切换用户
-    document.getElementById("user-select").addEventListener("change", function() {
-      currentUsername = this.value;
-    });
-
-    async function createPost() {
-      const content = document.getElementById("text").value.trim();
-      const image_url = document.getElementById("image").value.trim();
-      if (!content) return alert("请输入内容");
-
-      const res = await fetch(`${API_BASE}/posts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, content, image_url })
-      });
-
-      if (res.ok) {
-        alert("✅ 帖子发布成功！");
-        document.getElementById("text").value = "";
-        loadFeed();
-      } else {
-        alert("❌ 发布失败");
-      }
-    }
-
-    async function toggleLike(postId) {
-      await fetch(`${API_BASE}/likes/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, post_id: postId })
-      });
-      loadFeed();
-    }
-
-    async function postComment(postId) {
-      const content = document.getElementById(`comment-input-${postId}`).value.trim();
-      if (!content) return;
-      await fetch(`${API_BASE}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, post_id: postId, content })
-      });
-      document.getElementById(`comment-input-${postId}`).value = "";
-      loadComments(postId);
-    }
-
-    async function loadFeed(sort = "time") {
-      document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-      if (sort === "time") document.getElementById("btn-time").classList.add('active');
-      else document.getElementById("btn-pop").classList.add('active');
-
-      const res = await fetch(`${API_BASE}/feed?sort=${sort}`);
-      const posts = await res.json();
-      renderFeed(posts);
-    }
-
-    async function searchPosts() {
-      const keyword = document.getElementById("search-input").value.trim();
-      const res = await fetch(`${API_BASE}/feed?search=${encodeURIComponent(keyword)}`);
-      const posts = await res.json();
-      renderFeed(posts);
-    }
-
-    function renderFeed(posts) {
-      const container = document.getElementById("feed-container");
-      container.innerHTML = "";
-      posts.forEach(post => {
-        const div = document.createElement("div");
-        div.className = "bg-white p-6 rounded-3xl shadow";
-        div.innerHTML = `
-          <div class="flex justify-between">
-            <div class="font-semibold">@${post.username}</div>
-            <div class="text-sm text-gray-500">${post.created_at}</div>
-          </div>
-          <p class="my-3">${post.text_content || post.content || ""}</p>
-          ${post.image_url ? `<img src="${post.image_url}" class="rounded-2xl w-full mb-4">` : ""}
-          <button onclick="toggleLike(${post.id})" class="text-3xl text-red-500">❤️</button>
-          <span class="ml-2 text-xl" id="like-count-${post.id}">${post.like_count}</span>
-
-          <div class="mt-6">
-            <input id="comment-input-${post.id}" placeholder="写评论..." class="w-full border p-3 rounded-2xl text-sm">
-            <button onclick="postComment(${post.id})" class="mt-2 bg-gray-200 px-6 py-2 rounded-2xl text-sm">发送评论</button>
-          </div>
-          <div id="comments-${post.id}" class="mt-4 space-y-2"></div>
-        `;
-        container.appendChild(div);
-        loadComments(post.id);
-      });
-    }
-
-    async function loadComments(postId) {
-      const res = await fetch(`${API_BASE}/posts/${postId}/comments`);
-      const comments = await res.json();
-      const container = document.getElementById(`comments-${post.id}`);
-      container.innerHTML = comments.map(c => `
-        <div class="pl-4 border-l-2 border-gray-200 text-sm">
-          <span class="font-medium">@${c.username}</span>: ${c.content}
-          <span class="text-xs text-gray-400 ml-2">${c.timestamp}</span>
-        </div>
-      `).join("");
-    }
-
-    async function sendToVanna() {
-      const input = document.getElementById("chat-input");
-      const msg = input.value.trim();
-      if (!msg) return;
-      const chat = document.getElementById("chat-messages");
-      chat.innerHTML += `<div class="text-right mb-2"><span class="bg-red-100 px-4 py-2 rounded-3xl">${msg}</span></div>`;
-      input.value = "";
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: msg })
-      });
-      const data = await res.json();
-      chat.innerHTML += `<div class="text-left"><span class="bg-white px-4 py-2 rounded-3xl shadow">${data.response}</span></div>`;
-      chat.scrollTop = chat.scrollHeight;
-    }
-
-    // 初始化
-    window.onload = () => {
-      loadUsers();
-      loadFeed("time");
+    const STATE = {
+      backendUsers: [],
+      knownUsers: []
     };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function setAuthStatus(message, tone = "neutral") {
+      const element = $("auth-status");
+      element.className = `mt-5 rounded-2xl px-4 py-3 text-sm ${tone === "success" ? "message-success" : tone === "error" ? "message-error" : "message-neutral"}`;
+      element.textContent = message;
+    }
+
+    function loadKnownUsers() {
+      try {
+        const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || "[]");
+        if (Array.isArray(users)) {
+          STATE.knownUsers = users.filter(Boolean);
+        }
+      } catch {
+        STATE.knownUsers = [];
+      }
+    }
+
+    function saveKnownUser(username) {
+      const next = [username, ...STATE.knownUsers.filter((item) => item !== username)].slice(0, 20);
+      STATE.knownUsers = next;
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(next));
+    }
+
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (!response.ok) {
+        const message = payload && (payload.detail || payload.message)
+          ? payload.detail || payload.message
+          : `请求失败 (${response.status})`;
+        throw new Error(message);
+      }
+      return payload;
+    }
+
+    function renderLoginUsers() {
+      const container = $("login-user-list");
+      const allUsers = [...new Set([...STATE.backendUsers, ...STATE.knownUsers])];
+      container.innerHTML = "";
+      if (!allUsers.length) {
+        container.innerHTML = '<div class="rounded-full border border-dashed border-orange-200 px-4 py-2 text-sm text-slate-500">No users available yet</div>';
+        return;
+      }
+      allUsers.forEach((username) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember";
+        button.textContent = `@${username}`;
+        button.addEventListener("click", () => {
+          $("login-username").value = username;
+        });
+        container.appendChild(button);
+      });
+    }
+
+    async function refreshBackendUsers() {
+      const users = await fetchJson(`${API_BASE}/users`);
+      STATE.backendUsers = Array.isArray(users) ? users : [];
+      renderLoginUsers();
+      return STATE.backendUsers;
+    }
+
+    function switchAuthTab(tab) {
+      document.querySelectorAll(".auth-tab").forEach((button) => {
+        button.classList.toggle("toggle-active", button.dataset.authTab === tab);
+        button.classList.toggle("text-slate-600", button.dataset.authTab !== tab);
+      });
+      $("login-panel").classList.toggle("hidden-panel", tab !== "login");
+      $("register-panel").classList.toggle("hidden-panel", tab !== "register");
+    }
+
+    function enterApp(username) {
+      saveKnownUser(username);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, username);
+      window.location.href = APP_PAGE;
+    }
+
+    async function checkBackend() {
+      setAuthStatus("Checking backend connection...", "neutral");
+      try {
+        await refreshBackendUsers();
+        setAuthStatus("Backend connected. You can now sign in or register.", "success");
+      } catch (error) {
+        setAuthStatus(`Backend connection failed: ${error.message}`, "error");
+      }
+    }
+
+    async function handleLogin() {
+      const username = $("login-username").value.trim();
+      if (!username) {
+        setAuthStatus("Please enter a username.", "error");
+        return;
+      }
+      try {
+        const users = STATE.backendUsers.length ? STATE.backendUsers : await refreshBackendUsers();
+        if (!users.includes(username)) {
+          setAuthStatus("This username does not exist yet. Please register first.", "error");
+          return;
+        }
+        enterApp(username);
+      } catch (error) {
+        setAuthStatus(error.message, "error");
+      }
+    }
+
+    async function handleRegister() {
+      const username = $("register-username").value.trim();
+      if (!username) {
+        setAuthStatus("Please enter a username to register.", "error");
+        return;
+      }
+      try {
+        await fetchJson(`${API_BASE}/users`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username })
+        });
+        enterApp(username);
+      } catch (error) {
+        setAuthStatus(error.message, "error");
+      }
+    }
+
+    function bindEvents() {
+      $("check-backend-button").addEventListener("click", checkBackend);
+      $("refresh-login-users").addEventListener("click", checkBackend);
+      document.querySelectorAll(".auth-tab").forEach((button) => {
+        button.addEventListener("click", () => switchAuthTab(button.dataset.authTab));
+      });
+      $("login-button").addEventListener("click", handleLogin);
+      $("register-button").addEventListener("click", handleRegister);
+      $("login-username").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleLogin();
+        }
+      });
+      $("register-username").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleRegister();
+        }
+      });
+    }
+
+    async function init() {
+      loadKnownUsers();
+      bindEvents();
+      const currentUser = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (currentUser) {
+        window.location.href = APP_PAGE;
+        return;
+      }
+      renderLoginUsers();
+      try {
+        await refreshBackendUsers();
+        setAuthStatus("Backend connected. You can sign in now.", "success");
+      } catch (error) {
+        setAuthStatus(`Backend connection failed: ${error.message}`, "error");
+      }
+    }
+
+    window.addEventListener("load", init);
   </script>
 </body>
 </html>

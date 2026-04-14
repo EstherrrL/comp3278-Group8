@@ -73,6 +73,9 @@ class CreateComment(BaseModel):
     content: str
     parent_comment_id: Optional[int] = None   # 用于回复
 
+class DeleteComment(BaseModel):
+    username: str
+
 # ===================== API =====================
 @app.post("/users")
 def create_user(req: CreateUser):
@@ -80,26 +83,35 @@ def create_user(req: CreateUser):
     conn.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (req.username,))
     conn.commit()
     conn.close()
-    return {"message": "用户创建成功"}
+    return {"message": "User created successfully"}
+
+@app.get("/users")
+def list_users():
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT username FROM users ORDER BY timestamp DESC, username ASC"
+    ).fetchall()
+    conn.close()
+    return [row["username"] for row in rows]
 
 @app.post("/posts")
 def create_post(req: CreatePost):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     conn.execute("INSERT INTO posts (user_id, content, image_url) VALUES (?,?,?)",
                  (user["user_id"], req.content, req.image_url))
     conn.commit()
     conn.close()
-    return {"message": "帖子发布成功"}
+    return {"message": "Post published successfully"}
 
 @app.post("/likes/toggle")
 def toggle_like(req: ToggleLike):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     
     # 检查是否已点赞
     liked = conn.execute("SELECT 1 FROM likes WHERE user_id=? AND post_id=?", 
@@ -111,14 +123,14 @@ def toggle_like(req: ToggleLike):
                     (user["user_id"], req.post_id))
         conn.execute("UPDATE posts SET likes_count = likes_count - 1 WHERE post_id=?", 
                     (req.post_id,))
-        action = "取消点赞"
+        action = "Like removed"
     else:
         # 点赞
         conn.execute("INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?,?)", 
                     (user["user_id"], req.post_id))
         conn.execute("UPDATE posts SET likes_count = likes_count + 1 WHERE post_id=?", 
                     (req.post_id,))
-        action = "点赞成功"
+        action = "Post liked"
     
     conn.commit()
     conn.close()
@@ -129,26 +141,67 @@ def create_comment(req: CreateComment):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     conn.execute("""
         INSERT INTO comments (user_id, post_id, content, parent_comment_id) 
         VALUES (?,?,?,?)
     """, (user["user_id"], req.post_id, req.content, req.parent_comment_id))
     conn.commit()
     conn.close()
-    return {"message": "评论成功"}
+    return {"message": "Comment added successfully"}
+
+@app.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, req: DeleteComment):
+    conn = get_conn()
+    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(404, "User not found")
+
+    comment = conn.execute(
+        "SELECT user_id FROM comments WHERE comment_id=?",
+        (comment_id,)
+    ).fetchone()
+    if not comment:
+        conn.close()
+        raise HTTPException(404, "Comment not found")
+
+    if comment["user_id"] != user["user_id"]:
+        conn.close()
+        raise HTTPException(403, "You can only delete your own comments")
+
+    conn.execute("DELETE FROM comments WHERE comment_id=?", (comment_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Comment deleted"}
 
 @app.get("/feed")
-def get_feed(sort: str = "time", limit: int = 20):
+def get_feed(sort: str = "time", limit: int = 20, viewer: Optional[str] = None):
     order_by = "p.timestamp DESC" if sort == "time" else "p.likes_count DESC"
     conn = get_conn()
-    rows = conn.execute(f"""
-        SELECT p.post_id as id, u.username, p.content as text_content, 
-               p.image_url, p.timestamp as created_at, p.likes_count as like_count
-        FROM posts p 
-        JOIN users u ON p.user_id = u.user_id
-        ORDER BY {order_by} LIMIT ?
-    """, (limit,)).fetchall()
+    if viewer:
+        rows = conn.execute(f"""
+            SELECT p.post_id as id, u.username, p.content as text_content,
+                   p.image_url, p.timestamp as created_at, p.likes_count as like_count,
+                   EXISTS(
+                       SELECT 1
+                       FROM likes l
+                       JOIN users vu ON vu.user_id = l.user_id
+                       WHERE l.post_id = p.post_id AND vu.username = ?
+                   ) as liked_by_viewer
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            ORDER BY {order_by} LIMIT ?
+        """, (viewer, limit)).fetchall()
+    else:
+        rows = conn.execute(f"""
+            SELECT p.post_id as id, u.username, p.content as text_content,
+                   p.image_url, p.timestamp as created_at, p.likes_count as like_count,
+                   0 as liked_by_viewer
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            ORDER BY {order_by} LIMIT ?
+        """, (limit,)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
