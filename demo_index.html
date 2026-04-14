@@ -1,218 +1,599 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <title>HKUgram - Social Media</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { font-family: system-ui; }
-    .feed { max-width: 620px; margin: 0 auto; }
-    .sort-btn.active { background-color: #dc2626 !important; color: white !important; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HKUgram - 社交媒体平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .sort-btn.active {
+            background-color: #dc2626 !important;
+            color: white !important;
+        }
+        .comment-hover:hover .reply-btn {
+            opacity: 1;
+        }
+        .reply-btn {
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .reply-form {
+            display: none;
+        }
+        .reply-form.active {
+            display: block;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .post-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .post-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .like-button {
+            transition: transform 0.2s;
+        }
+        .like-button:hover {
+            transform: scale(1.1);
+        }
+        .comment-tree {
+            border-left: 2px solid #e5e7eb;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scrollbar-hide::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .scrollbar-hide::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 p-4">
-  <div class="max-w-4xl mx-auto">
-    <h1 class="text-4xl font-bold text-red-600 text-center mb-8">🏫 HKUgram</h1>
-
-    <!-- 用户切换区域 -->
-    <div class="bg-white p-4 rounded-3xl shadow mb-6 flex items-center gap-3">
-      <span class="font-medium">当前用户：</span>
-      <select id="user-select" class="flex-1 border p-3 rounded-2xl text-lg"></select>
-      <input id="new-username" placeholder="新用户名" class="border p-3 rounded-2xl w-48">
-      <button onclick="createNewUser()" class="bg-green-600 text-white px-6 py-3 rounded-2xl font-medium">创建用户</button>
-    </div>
-
-    <!-- 发帖区 -->
-    <div class="bg-white p-6 rounded-3xl shadow mb-8">
-      <h2 class="text-xl font-semibold mb-4">发新帖</h2>
-      <textarea id="text" placeholder="说点什么..." class="w-full border p-3 rounded-2xl mb-3 h-24"></textarea>
-      <input id="image" placeholder="图片URL (可选)" class="w-full border p-3 rounded-2xl mb-3">
-      <button onclick="createPost()" class="bg-red-600 text-white px-8 py-3 rounded-2xl font-medium w-full">发布帖子</button>
-    </div>
-
-    <!-- 搜索 + 排序 -->
-    <div class="flex gap-3 mb-8 flex-wrap">
-      <input id="search-input" placeholder="搜索帖子关键词" class="flex-1 border p-3 rounded-3xl">
-      <button onclick="searchPosts()" class="bg-red-600 text-white px-8 rounded-3xl">搜索</button>
-      <button id="btn-time" onclick="loadFeed('time')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按时间排序</button>
-      <button id="btn-pop" onclick="loadFeed('popularity')" class="sort-btn px-6 py-3 rounded-3xl font-medium">按人气排序</button>
-    </div>
-
-    <!-- Feed -->
-    <div id="feed-container" class="space-y-8"></div>
-  </div>
-
-  <!-- Vanna AI -->
-  <div class="fixed bottom-6 right-6 bg-white shadow-2xl rounded-3xl w-96 overflow-hidden">
-    <div class="bg-red-600 text-white p-4 font-medium">🤖 Vanna AI - 自然语言查询</div>
-    <div id="chat-messages" class="h-96 p-4 overflow-y-auto bg-gray-50"></div>
-    <div class="p-4 border-t flex gap-2">
-      <input id="chat-input" placeholder="例如：显示点赞最多的帖子" class="flex-1 border rounded-3xl px-5 py-3">
-      <button onclick="sendToVanna()" class="bg-red-600 text-white px-8 rounded-3xl">发送</button>
-    </div>
-  </div>
-
-  <script>
-    const API_BASE = "http://127.0.0.1:8000";
-    let currentUsername = "";
-
-    // 加载已有用户并填充下拉框
-    async function loadUsers() {
-      const res = await fetch(`${API_BASE}/users`);
-      const users = await res.json();
-      const select = document.getElementById("user-select");
-      select.innerHTML = "";
-      users.forEach(user => {
-        const option = document.createElement("option");
-        option.value = user;
-        option.textContent = user;
-        select.appendChild(option);
-      });
-      if (users.length > 0) {
-        currentUsername = users[0];
-        select.value = currentUsername;
-      }
-    }
-
-    // 创建新用户
-    async function createNewUser() {
-      const newName = document.getElementById("new-username").value.trim();
-      if (!newName) return alert("请输入新用户名");
-      const res = await fetch(`${API_BASE}/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: newName })
-      });
-      const data = await res.json();
-      alert(data.message);
-      loadUsers();
-      document.getElementById("new-username").value = "";
-    }
-
-    // 切换用户
-    document.getElementById("user-select").addEventListener("change", function() {
-      currentUsername = this.value;
-    });
-
-    async function createPost() {
-      const content = document.getElementById("text").value.trim();
-      const image_url = document.getElementById("image").value.trim();
-      if (!content) return alert("请输入内容");
-
-      const res = await fetch(`${API_BASE}/posts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, content, image_url })
-      });
-
-      if (res.ok) {
-        alert("✅ 帖子发布成功！");
-        document.getElementById("text").value = "";
-        loadFeed();
-      } else {
-        alert("❌ 发布失败");
-      }
-    }
-
-    async function toggleLike(postId) {
-      await fetch(`${API_BASE}/likes/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, post_id: postId })
-      });
-      loadFeed();
-    }
-
-    async function postComment(postId) {
-      const content = document.getElementById(`comment-input-${postId}`).value.trim();
-      if (!content) return;
-      await fetch(`${API_BASE}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: currentUsername, post_id: postId, content })
-      });
-      document.getElementById(`comment-input-${postId}`).value = "";
-      loadComments(postId);
-    }
-
-    async function loadFeed(sort = "time") {
-      document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-      if (sort === "time") document.getElementById("btn-time").classList.add('active');
-      else document.getElementById("btn-pop").classList.add('active');
-
-      const res = await fetch(`${API_BASE}/feed?sort=${sort}`);
-      const posts = await res.json();
-      renderFeed(posts);
-    }
-
-    async function searchPosts() {
-      const keyword = document.getElementById("search-input").value.trim();
-      const res = await fetch(`${API_BASE}/feed?search=${encodeURIComponent(keyword)}`);
-      const posts = await res.json();
-      renderFeed(posts);
-    }
-
-    function renderFeed(posts) {
-      const container = document.getElementById("feed-container");
-      container.innerHTML = "";
-      posts.forEach(post => {
-        const div = document.createElement("div");
-        div.className = "bg-white p-6 rounded-3xl shadow";
-        div.innerHTML = `
-          <div class="flex justify-between">
-            <div class="font-semibold">@${post.username}</div>
-            <div class="text-sm text-gray-500">${post.created_at}</div>
-          </div>
-          <p class="my-3">${post.text_content || post.content || ""}</p>
-          ${post.image_url ? `<img src="${post.image_url}" class="rounded-2xl w-full mb-4">` : ""}
-          <button onclick="toggleLike(${post.id})" class="text-3xl text-red-500">❤️</button>
-          <span class="ml-2 text-xl" id="like-count-${post.id}">${post.like_count}</span>
-
-          <div class="mt-6">
-            <input id="comment-input-${post.id}" placeholder="写评论..." class="w-full border p-3 rounded-2xl text-sm">
-            <button onclick="postComment(${post.id})" class="mt-2 bg-gray-200 px-6 py-2 rounded-2xl text-sm">发送评论</button>
-          </div>
-          <div id="comments-${post.id}" class="mt-4 space-y-2"></div>
-        `;
-        container.appendChild(div);
-        loadComments(post.id);
-      });
-    }
-
-    async function loadComments(postId) {
-      const res = await fetch(`${API_BASE}/posts/${postId}/comments`);
-      const comments = await res.json();
-      const container = document.getElementById(`comments-${post.id}`);
-      container.innerHTML = comments.map(c => `
-        <div class="pl-4 border-l-2 border-gray-200 text-sm">
-          <span class="font-medium">@${c.username}</span>: ${c.content}
-          <span class="text-xs text-gray-400 ml-2">${c.timestamp}</span>
+<body class="p-4">
+    <div class="max-w-4xl mx-auto">
+        <!-- 头部 -->
+        <div class="text-center mb-8 fade-in">
+            <h1 class="text-5xl font-bold text-white mb-2">🏫 HKUgram</h1>
+            <p class="text-white text-opacity-90">连接香港大学社区</p>
         </div>
-      `).join("");
-    }
 
-    async function sendToVanna() {
-      const input = document.getElementById("chat-input");
-      const msg = input.value.trim();
-      if (!msg) return;
-      const chat = document.getElementById("chat-messages");
-      chat.innerHTML += `<div class="text-right mb-2"><span class="bg-red-100 px-4 py-2 rounded-3xl">${msg}</span></div>`;
-      input.value = "";
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: msg })
-      });
-      const data = await res.json();
-      chat.innerHTML += `<div class="text-left"><span class="bg-white px-4 py-2 rounded-3xl shadow">${data.response}</span></div>`;
-      chat.scrollTop = chat.scrollHeight;
-    }
+        <!-- 用户切换区域 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 mb-6 fade-in">
+            <div class="flex items-center gap-4 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-700">👤 当前用户：</span>
+                    <select id="user-select" class="border-2 border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-red-500 transition"></select>
+                </div>
+                <div class="flex-1 flex gap-2">
+                    <input id="new-username" type="text" placeholder="新用户名" class="flex-1 border-2 border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-green-500 transition">
+                    <button onclick="createNewUser()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-semibold transition transform hover:scale-105">
+                        创建用户
+                    </button>
+                </div>
+            </div>
+        </div>
 
-    // 初始化
-    window.onload = () => {
-      loadUsers();
-      loadFeed("time");
-    };
-  </script>
+        <!-- 发帖区域 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 mb-6 fade-in">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">📝 发布新帖子</h2>
+            <textarea id="post-content" rows="3" placeholder="分享你的想法..." class="w-full border-2 border-gray-300 rounded-xl p-3 focus:outline-none focus:border-red-500 transition mb-3"></textarea>
+            <input id="image-url" type="text" placeholder="图片URL (可选)" class="w-full border-2 border-gray-300 rounded-xl p-3 focus:outline-none focus:border-red-500 transition mb-3">
+            <button onclick="createPost()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition transform hover:scale-105">
+                🚀 发布帖子
+            </button>
+        </div>
+
+        <!-- 搜索和排序区域 -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 mb-6 fade-in">
+            <div class="flex gap-3 flex-wrap">
+                <div class="flex-1 flex gap-2">
+                    <input id="search-input" type="text" placeholder="🔍 搜索帖子..." class="flex-1 border-2 border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-red-500 transition">
+                    <button onclick="searchPosts()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-semibold transition">
+                        搜索
+                    </button>
+                </div>
+                <button id="btn-time" onclick="loadFeed('time')" class="sort-btn bg-gray-200 hover:bg-gray-300 px-6 py-2 rounded-xl font-semibold transition">
+                    🕐 时间排序
+                </button>
+                <button id="btn-pop" onclick="loadFeed('popularity')" class="sort-btn bg-gray-200 hover:bg-gray-300 px-6 py-2 rounded-xl font-semibold transition">
+                    🔥 人气排序
+                </button>
+            </div>
+        </div>
+
+        <!-- Feed 帖子列表 -->
+        <div id="feed-container" class="space-y-6"></div>
+    </div>
+
+    <!-- Vanna AI 聊天机器人 -->
+    <div class="fixed bottom-6 right-6 w-96 bg-white rounded-2xl shadow-2xl overflow-hidden fade-in">
+        <div class="bg-gradient-to-r from-red-600 to-red-700 text-white p-4 font-bold flex items-center justify-between">
+            <span>🤖 Vanna AI 助手</span>
+            <button onclick="toggleChat()" class="text-white hover:text-gray-200">
+                <span id="chat-toggle-icon">−</span>
+            </button>
+        </div>
+        <div id="chat-container" class="transition-all duration-300">
+            <div id="chat-messages" class="h-96 overflow-y-auto p-4 bg-gray-50 scrollbar-hide"></div>
+            <div class="p-4 border-t">
+                <div class="flex gap-2">
+                    <input id="chat-input" type="text" placeholder="问我任何问题..." class="flex-1 border-2 border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:border-red-500 transition">
+                    <button onclick="sendToVanna()" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-semibold transition">
+                        发送
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://127.0.0.1:8000";
+        let currentUsername = "";
+        let chatVisible = true;
+
+        // 切换聊天窗口
+        function toggleChat() {
+            chatVisible = !chatVisible;
+            const container = document.getElementById('chat-container');
+            const icon = document.getElementById('chat-toggle-icon');
+            if (chatVisible) {
+                container.style.display = 'block';
+                icon.textContent = '−';
+            } else {
+                container.style.display = 'none';
+                icon.textContent = '+';
+            }
+        }
+
+        // 加载用户列表
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/users`);
+                const users = await response.json();
+                const select = document.getElementById("user-select");
+                select.innerHTML = '<option value="">选择用户</option>';
+                users.forEach(user => {
+                    const option = document.createElement("option");
+                    option.value = user;
+                    option.textContent = user;
+                    select.appendChild(option);
+                });
+                if (users.length > 0) {
+                    currentUsername = users[0];
+                    select.value = currentUsername;
+                }
+            } catch (error) {
+                console.error("加载用户失败:", error);
+            }
+        }
+
+        // 创建新用户
+        async function createNewUser() {
+            const username = document.getElementById("new-username").value.trim();
+            if (!username) {
+                alert("请输入用户名");
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/users`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: username })
+                });
+                const data = await response.json();
+                alert(data.message);
+                if (data.message === "用户创建成功") {
+                    await loadUsers();
+                    document.getElementById("new-username").value = "";
+                    currentUsername = username;
+                    document.getElementById("user-select").value = username;
+                }
+            } catch (error) {
+                console.error("创建用户失败:", error);
+                alert("创建用户失败，请重试");
+            }
+        }
+
+        // 用户切换事件
+        document.getElementById("user-select").addEventListener("change", (e) => {
+            currentUsername = e.target.value;
+            if (currentUsername) {
+                console.log("切换到用户:", currentUsername);
+            }
+        });
+
+        // 创建帖子
+        async function createPost() {
+            if (!currentUsername) {
+                alert("请先选择用户");
+                return;
+            }
+            const content = document.getElementById("post-content").value.trim();
+            const imageUrl = document.getElementById("image-url").value.trim();
+            if (!content) {
+                alert("请输入帖子内容");
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/posts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: currentUsername,
+                        content: content,
+                        image_url: imageUrl || null
+                    })
+                });
+                if (response.ok) {
+                    alert("✅ 帖子发布成功！");
+                    document.getElementById("post-content").value = "";
+                    document.getElementById("image-url").value = "";
+                    await loadFeed();
+                } else {
+                    alert("发布失败");
+                }
+            } catch (error) {
+                console.error("发布帖子失败:", error);
+                alert("发布失败，请重试");
+            }
+        }
+
+        // 点赞/取消点赞
+        async function toggleLike(postId) {
+            if (!currentUsername) {
+                alert("请先选择用户");
+                return;
+            }
+            try {
+                await fetch(`${API_BASE}/likes/toggle`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: currentUsername,
+                        post_id: postId
+                    })
+                });
+                // 保持当前排序
+                const activeSort = document.querySelector('.sort-btn.active');
+                const sortType = activeSort ? (activeSort.id === 'btn-time' ? 'time' : 'popularity') : 'time';
+                await loadFeed(sortType);
+            } catch (error) {
+                console.error("点赞失败:", error);
+            }
+        }
+
+        // 显示回复表单
+        function showReplyForm(commentId, username, postId) {
+            // 隐藏所有其他回复表单
+            document.querySelectorAll('.reply-form').forEach(form => {
+                if (form.id !== `reply-form-${commentId}`) {
+                    form.classList.remove('active');
+                }
+            });
+            
+            const form = document.getElementById(`reply-form-${commentId}`);
+            if (form) {
+                form.classList.toggle('active');
+                if (form.classList.contains('active')) {
+                    const input = document.getElementById(`reply-input-${commentId}`);
+                    if (input) {
+                        input.focus();
+                        input.placeholder = `回复 @${username}...`;
+                    }
+                }
+            }
+        }
+
+        // 提交回复
+        async function submitReply(commentId, postId) {
+            if (!currentUsername) {
+                alert("请先选择用户");
+                return;
+            }
+            
+            const input = document.getElementById(`reply-input-${commentId}`);
+            const content = input.value.trim();
+            if (!content) {
+                alert("请输入回复内容");
+                return;
+            }
+            
+            try {
+                await fetch(`${API_BASE}/comments`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: currentUsername,
+                        post_id: postId,
+                        content: content,
+                        parent_comment_id: commentId
+                    })
+                });
+                
+                input.value = "";
+                document.getElementById(`reply-form-${commentId}`).classList.remove('active');
+                await loadComments(postId);
+            } catch (error) {
+                console.error("回复失败:", error);
+                alert("回复失败，请重试");
+            }
+        }
+
+        // 发表评论
+        async function postComment(postId) {
+            if (!currentUsername) {
+                alert("请先选择用户");
+                return;
+            }
+            const content = document.getElementById(`comment-input-${postId}`).value.trim();
+            if (!content) {
+                alert("请输入评论内容");
+                return;
+            }
+            try {
+                await fetch(`${API_BASE}/comments`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: currentUsername,
+                        post_id: postId,
+                        content: content,
+                        parent_comment_id: null
+                    })
+                });
+                document.getElementById(`comment-input-${postId}`).value = "";
+                await loadComments(postId);
+            } catch (error) {
+                console.error("评论失败:", error);
+                alert("评论失败，请重试");
+            }
+        }
+
+        // 渲染评论树
+        function renderCommentTree(comment, level = 0, postId) {
+            const marginLeft = Math.min(level * 30, 120);
+            const replyToInfo = comment.parent_comment_id ? `回复 @${comment.username}` : '';
+            
+            return `
+                <div class="comment-hover relative fade-in" style="margin-left: ${marginLeft}px">
+                    <div class="bg-white rounded-lg p-3 mb-2 shadow-sm hover:shadow-md transition">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <span class="font-bold text-red-600">@${escapeHtml(comment.username)}</span>
+                                <span class="text-xs text-gray-500 ml-2">${comment.timestamp}</span>
+                            </div>
+                        </div>
+                        <div class="text-gray-700 mb-2">${escapeHtml(comment.content)}</div>
+                        <div class="flex gap-3">
+                            <button onclick="showReplyForm(${comment.comment_id}, '${escapeHtml(comment.username)}', ${postId})" 
+                                    class="reply-btn text-sm text-blue-600 hover:text-blue-800 transition">
+                                💬 回复
+                            </button>
+                        </div>
+                        <div id="reply-form-${comment.comment_id}" class="reply-form mt-3">
+                            <div class="flex gap-2">
+                                <input id="reply-input-${comment.comment_id}" 
+                                       type="text" 
+                                       placeholder="回复 @${escapeHtml(comment.username)}..." 
+                                       class="flex-1 border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition">
+                                <button onclick="submitReply(${comment.comment_id}, ${postId})" 
+                                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                                    回复
+                                </button>
+                                <button onclick="document.getElementById('reply-form-${comment.comment_id}').classList.remove('active')" 
+                                        class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                        ${comment.replies && comment.replies.length > 0 ? 
+                            `<div class="mt-2 space-y-2">
+                                ${comment.replies.map(reply => renderCommentTree(reply, level + 1, postId)).join('')}
+                            </div>` : 
+                            ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 加载帖子列表
+        async function loadFeed(sort = "time") {
+            // 更新按钮样式
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            if (sort === "time") {
+                document.getElementById("btn-time").classList.add('active');
+            } else {
+                document.getElementById("btn-pop").classList.add('active');
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/feed?sort=${sort}&limit=50`);
+                const posts = await response.json();
+                await renderFeed(posts);
+            } catch (error) {
+                console.error("加载帖子失败:", error);
+                document.getElementById("feed-container").innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-500">加载失败，请刷新页面重试</div>';
+            }
+        }
+
+        // 搜索帖子
+        async function searchPosts() {
+            const keyword = document.getElementById("search-input").value.trim();
+            if (!keyword) {
+                await loadFeed();
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/feed?search=${encodeURIComponent(keyword)}`);
+                const posts = await response.json();
+                await renderFeed(posts);
+            } catch (error) {
+                console.error("搜索失败:", error);
+            }
+        }
+
+        // 渲染帖子
+        async function renderFeed(posts) {
+            const container = document.getElementById("feed-container");
+            if (!posts || posts.length === 0) {
+                container.innerHTML = '<div class="bg-white rounded-2xl p-8 text-center text-gray-500">暂无帖子，快来发布第一个帖子吧！</div>';
+                return;
+            }
+            
+            container.innerHTML = "";
+            for (const post of posts) {
+                const postDiv = document.createElement("div");
+                postDiv.className = "bg-white rounded-2xl shadow-xl p-6 post-card fade-in";
+                postDiv.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <div class="font-bold text-lg text-gray-800">@${escapeHtml(post.username)}</div>
+                            <div class="text-sm text-gray-500">${post.created_at}</div>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <p class="text-gray-700 whitespace-pre-wrap">${escapeHtml(post.text_content || '')}</p>
+                        ${post.image_url ? `<img src="${post.image_url}" class="mt-3 rounded-lg max-w-full h-auto" onerror="this.style.display='none'" alt="Post image">` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 mb-4">
+                        <button onclick="toggleLike(${post.id})" class="like-button text-3xl text-red-500 hover:text-red-600 transition transform">
+                            ❤️
+                        </button>
+                        <span class="text-xl font-semibold text-gray-700">${post.like_count}</span>
+                        <span class="text-gray-500 ml-2">个赞</span>
+                    </div>
+                    <div class="border-t pt-4">
+                        <div class="mb-3">
+                            <textarea id="comment-input-${post.id}" rows="2" placeholder="写评论..." class="w-full border-2 border-gray-300 rounded-xl p-3 focus:outline-none focus:border-red-500 transition"></textarea>
+                            <button onclick="postComment(${post.id})" class="mt-2 bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-xl font-semibold transition">
+                                发表评论
+                            </button>
+                        </div>
+                        <div id="comments-${post.id}" class="space-y-3 max-h-96 overflow-y-auto scrollbar-hide"></div>
+                    </div>
+                `;
+                container.appendChild(postDiv);
+                await loadComments(post.id);
+            }
+        }
+
+        // 加载评论
+        async function loadComments(postId) {
+            try {
+                const response = await fetch(`${API_BASE}/posts/${postId}/comments`);
+                if (!response.ok) throw new Error("加载评论失败");
+                const commentsTree = await response.json();
+                const container = document.getElementById(`comments-${postId}`);
+                if (container) {
+                    if (!commentsTree || commentsTree.length === 0) {
+                        container.innerHTML = '<div class="text-center text-gray-400 py-4">暂无评论，快来抢沙发～</div>';
+                    } else {
+                        container.innerHTML = commentsTree.map(comment => 
+                            renderCommentTree(comment, 0, postId)
+                        ).join('');
+                    }
+                }
+            } catch (error) {
+                console.error("加载评论失败:", error);
+                const container = document.getElementById(`comments-${postId}`);
+                if (container) {
+                    container.innerHTML = '<div class="text-center text-red-400 py-4">加载评论失败</div>';
+                }
+            }
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 发送消息给Vanna AI
+        async function sendToVanna() {
+            const input = document.getElementById("chat-input");
+            const message = input.value.trim();
+            if (!message) return;
+            
+            // 显示用户消息
+            const chatMessages = document.getElementById("chat-messages");
+            chatMessages.innerHTML += `
+                <div class="text-right mb-3 fade-in">
+                    <div class="inline-block bg-red-100 rounded-2xl px-4 py-2 max-w-xs">
+                        <p class="text-gray-800">${escapeHtml(message)}</p>
+                    </div>
+                </div>
+            `;
+            input.value = "";
+            
+            try {
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: message })
+                });
+                const data = await response.json();
+                
+                // 显示AI回复
+                chatMessages.innerHTML += `
+                    <div class="text-left mb-3 fade-in">
+                        <div class="inline-block bg-white border border-gray-200 rounded-2xl px-4 py-2 max-w-xs shadow-sm">
+                            <p class="text-gray-800">${escapeHtml(data.response)}</p>
+                        </div>
+                    </div>
+                `;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (error) {
+                console.error("AI响应失败:", error);
+                chatMessages.innerHTML += `
+                    <div class="text-left mb-3 fade-in">
+                        <div class="inline-block bg-red-100 border border-red-300 rounded-2xl px-4 py-2 max-w-xs">
+                            <p class="text-red-800">抱歉，AI服务暂时不可用</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // 页面加载
+        window.onload = async () => {
+            await loadUsers();
+            await loadFeed("time");
+            // 添加欢迎消息
+            const chatMessages = document.getElementById("chat-messages");
+            chatMessages.innerHTML = `
+                <div class="text-left mb-3 fade-in">
+                    <div class="inline-block bg-white border border-gray-200 rounded-2xl px-4 py-2 shadow-sm">
+                        <p class="text-gray-800">👋 你好！我是Vanna AI助手，可以帮你查询和分析帖子数据！</p>
+                    </div>
+                </div>
+            `;
+        };
+    </script>
 </body>
 </html>
