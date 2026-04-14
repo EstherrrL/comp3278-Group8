@@ -1,6 +1,7 @@
 """
 app.py
-HKUgram Group8 最终完美版 - 修复所有 404/405 + 用户切换 + 香港时间 + 评论回复功能
+HKUgram Group8 最终完美版 - 完整功能版本
+包含：用户系统、帖子、点赞、评论回复、搜索排序、Vanna AI
 """
 
 import os
@@ -30,7 +31,7 @@ class SimpleUserResolver(UserResolver):
     async def resolve_user(self, request_context: RequestContext) -> User:
         return User(id="student", email="student@hku.hk", group_memberships=["user"])
 
-# ===================== Vanna =====================
+# ===================== Vanna 配置 =====================
 tools = ToolRegistry()
 tools.register_local_tool(RunSqlTool(sql_runner=SqliteRunner(DB_PATH)), access_groups=["admin", "user"])
 tools.register_local_tool(VisualizeDataTool(), access_groups=["admin", "user"])
@@ -60,11 +61,11 @@ async def vanna_chat(request: Request):
         data = await request.json()
         question = data.get("question", "")
         if not question:
-            return {"response": "请输入问题"}
+            return {"response": "Please enter a question"}
         response = agent.ask(question)
         return {"response": response}
     except Exception as e:
-        return {"response": f"Vanna 暂时无法回答: {str(e)}"}
+        return {"response": f"Vanna temporarily unavailable: {str(e)}"}
 
 # ===================== Models =====================
 class CreateUser(BaseModel):
@@ -84,6 +85,9 @@ class CreateComment(BaseModel):
     post_id: int
     content: str
     parent_comment_id: Optional[int] = None
+
+class DeleteComment(BaseModel):
+    username: str
 
 # ===================== DB Helper =====================
 def get_conn():
@@ -144,7 +148,25 @@ def init_db():
 # 初始化数据库
 init_db()
 
-# ===================== API =====================
+# ===================== Helper Functions =====================
+def get_user_id(username: str):
+    conn = get_conn()
+    user = conn.execute("SELECT user_id FROM users WHERE username=?", (username,)).fetchone()
+    conn.close()
+    return user["user_id"] if user else None
+
+def get_liked_posts_by_user(username: str):
+    """Get set of post IDs liked by a user"""
+    conn = get_conn()
+    user_id = get_user_id(username)
+    if not user_id:
+        conn.close()
+        return set()
+    rows = conn.execute("SELECT post_id FROM likes WHERE user_id=?", (user_id,)).fetchall()
+    conn.close()
+    return {row["post_id"] for row in rows}
+
+# ===================== API 端点 =====================
 @app.get("/users")
 def get_users():
     conn = get_conn()
@@ -158,9 +180,9 @@ def create_user(req: CreateUser):
     try:
         conn.execute("INSERT INTO users (username) VALUES (?)", (req.username,))
         conn.commit()
-        return {"message": "用户创建成功"}
+        return {"message": "User created successfully"}
     except sqlite3.IntegrityError:
-        return {"message": "用户名已存在"}
+        return {"message": "Username already exists"}
     finally:
         conn.close()
 
@@ -169,19 +191,19 @@ def create_post(req: CreatePost):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     conn.execute("INSERT INTO posts (user_id, content, image_url) VALUES (?,?,?)",
                  (user["user_id"], req.content, req.image_url))
     conn.commit()
     conn.close()
-    return {"message": "帖子发布成功"}
+    return {"message": "Post published successfully"}
 
 @app.post("/likes/toggle")
 def toggle_like(req: ToggleLike):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user: 
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     liked = conn.execute("SELECT 1 FROM likes WHERE user_id=? AND post_id=?", (user["user_id"], req.post_id)).fetchone()
     if liked:
         conn.execute("DELETE FROM likes WHERE user_id=? AND post_id=?", (user["user_id"], req.post_id))
@@ -191,30 +213,51 @@ def toggle_like(req: ToggleLike):
         conn.execute("UPDATE posts SET likes_count = likes_count + 1 WHERE post_id=?", (req.post_id,))
     conn.commit()
     conn.close()
-    return {"message": "点赞操作成功"}
+    return {"message": "Like toggled successfully"}
 
 @app.post("/comments")
 def create_comment(req: CreateComment):
     conn = get_conn()
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
     if not user: 
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     
-    # 如果 parent_comment_id 存在，验证父评论是否存在
+    # Verify parent comment exists if provided
     if req.parent_comment_id:
         parent = conn.execute("SELECT 1 FROM comments WHERE comment_id=?", (req.parent_comment_id,)).fetchone()
         if not parent:
-            raise HTTPException(404, "父评论不存在")
+            raise HTTPException(404, "Parent comment not found")
     
     conn.execute("""INSERT INTO comments (user_id, post_id, content, parent_comment_id) 
                    VALUES (?,?,?,?)""",
                  (user["user_id"], req.post_id, req.content, req.parent_comment_id))
     conn.commit()
     conn.close()
-    return {"message": "评论成功"}
+    return {"message": "Comment added successfully"}
+
+@app.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, req: DeleteComment):
+    conn = get_conn()
+    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    comment = conn.execute("SELECT user_id FROM comments WHERE comment_id=?", (comment_id,)).fetchone()
+    if not comment:
+        raise HTTPException(404, "Comment not found")
+    
+    if comment["user_id"] != user["user_id"]:
+        raise HTTPException(403, "You can only delete your own comments")
+    
+    # Delete all replies first (optional: can also set to NULL or cascade)
+    conn.execute("DELETE FROM comments WHERE parent_comment_id=?", (comment_id,))
+    conn.execute("DELETE FROM comments WHERE comment_id=?", (comment_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Comment deleted successfully"}
 
 @app.get("/feed")
-def get_feed(sort: str = "time", limit: int = 20, search: Optional[str] = None):
+def get_feed(sort: str = "time", limit: int = 50, search: Optional[str] = None, viewer: Optional[str] = None):
     order_by = "p.timestamp DESC" if sort == "time" else "p.likes_count DESC"
     conn = get_conn()
     query = f"""
@@ -229,13 +272,50 @@ def get_feed(sort: str = "time", limit: int = 20, search: Optional[str] = None):
     query += f" ORDER BY {order_by} LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()
+    
+    # Get liked posts for viewer
+    liked_posts = get_liked_posts_by_user(viewer) if viewer else set()
+    
+    result = []
+    for row in rows:
+        post_dict = dict(row)
+        post_dict["liked_by_viewer"] = post_dict["id"] in liked_posts
+        result.append(post_dict)
+    
     conn.close()
-    return [dict(row) for row in rows]
+    return result
+
+@app.get("/users/{username}/posts")
+def get_user_posts(username: str, viewer: Optional[str] = None):
+    conn = get_conn()
+    user = conn.execute("SELECT user_id FROM users WHERE username=?", (username,)).fetchone()
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    rows = conn.execute("""
+        SELECT p.post_id as id, p.content as text_content, 
+               p.image_url, p.timestamp as created_at, p.likes_count as like_count
+        FROM posts p
+        WHERE p.user_id = ?
+        ORDER BY p.timestamp DESC
+    """, (user["user_id"],)).fetchall()
+    
+    # Get liked posts for viewer
+    liked_posts = get_liked_posts_by_user(viewer) if viewer else set()
+    
+    result = []
+    for row in rows:
+        post_dict = dict(row)
+        post_dict["liked_by_viewer"] = post_dict["id"] in liked_posts
+        result.append(post_dict)
+    
+    conn.close()
+    return result
 
 @app.get("/posts/{post_id}/comments")
 def get_comments(post_id: int):
     conn = get_conn()
-    # 获取所有评论
+    # Get all comments for this post
     rows = conn.execute("""
         SELECT c.comment_id, u.username, c.content, c.timestamp, c.parent_comment_id
         FROM comments c JOIN users u ON c.user_id = u.user_id
@@ -243,7 +323,7 @@ def get_comments(post_id: int):
     """, (post_id,)).fetchall()
     conn.close()
     
-    # 构建评论树结构
+    # Build comment tree structure
     comments = [dict(row) for row in rows]
     comment_dict = {c['comment_id']: {**c, 'replies': []} for c in comments}
     root_comments = []
@@ -267,13 +347,13 @@ def get_comment(comment_id: int):
     """, (comment_id,)).fetchone()
     conn.close()
     if not row:
-        raise HTTPException(404, "评论不存在")
+        raise HTTPException(404, "Comment not found")
     return dict(row)
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 HKUgram Group8 最终完美版已启动！")
-    print("   → 访问 http://127.0.0.1:8000/docs")
-    print("   → 打开 demo_index.html")
+    print("🚀 HKUgram Group8 Final Version Started!")
+    print("   → Visit http://127.0.0.1:8000/docs")
+    print("   → Open demo_index.html")
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
