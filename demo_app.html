@@ -94,6 +94,12 @@
       color: #dc2626;
     }
 
+    .post-delete-button {
+      border: 1px solid rgba(220, 38, 38, 0.18);
+      background: rgba(220, 38, 38, 0.08);
+      color: #dc2626;
+    }
+
     .slide-up {
       animation: slideUp 260ms ease;
     }
@@ -409,17 +415,43 @@
           card.className = "slide-up rounded-[1.6rem] bg-white p-5 ring-1 ring-orange-100";
           card.innerHTML = `
             <div class="flex items-center justify-between gap-3">
-              <div class="text-base font-extrabold text-slate-900">帖子 #${post.id}</div>
-              <div class="text-xs text-slate-500">${escapeHtml(post.created_at || "")}</div>
+              <div>
+                <div class="text-base font-extrabold text-slate-900">帖子 #${post.id}</div>
+                <div class="mt-1 text-xs text-slate-500">${escapeHtml(post.created_at || "")}</div>
+              </div>
+              <button data-profile-delete="${post.id}" class="post-delete-button rounded-full px-4 py-2 text-xs font-semibold transition hover:bg-red-100">Delete Post</button>
             </div>
             <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">${escapeHtml(post.text_content || "") || "<span class=\"text-slate-400\">Image-only post</span>"}</p>
             ${post.image_url ? `<img src="${escapeHtml(post.image_url)}" alt="post image" class="mt-4 max-h-72 w-full rounded-[1.2rem] object-cover">` : ""}
             <div class="mt-4 text-sm text-slate-500">${Number(post.like_count || 0)} likes</div>
           `;
+          card.querySelector("[data-profile-delete]").addEventListener("click", () => {
+            deletePost(post.id);
+          });
           container.appendChild(card);
         });
       } catch (error) {
         container.innerHTML = `<div class="rounded-[1.5rem] bg-rose-50 px-5 py-4 text-sm text-rose-700">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    async function deletePost(postId) {
+      const confirmed = window.confirm(`Delete post #${postId}? This cannot be undone.`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await fetchJson(`${API_BASE}/posts/${postId}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: STATE.currentUser })
+        });
+
+        STATE.feedPosts = STATE.feedPosts.filter((post) => post.id !== postId);
+        await refreshProfile();
+      } catch (error) {
+        alert(error.message);
       }
     }
 

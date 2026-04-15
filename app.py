@@ -67,6 +67,10 @@ class DeleteComment(BaseModel):
     username: str
 
 
+class DeletePost(BaseModel):
+    username: str
+
+
 class SimpleUserResolver(UserResolver):
     async def resolve_user(self, request_context):
         return User(id="student", email="student@hku.hk", group_memberships=["user"])
@@ -173,6 +177,30 @@ def create_post(req: CreatePost):
         )
         conn.commit()
         return {"message": "Post published successfully"}
+    finally:
+        conn.close()
+
+
+@app.delete("/posts/{post_id}")
+def delete_post(post_id: int, req: DeletePost):
+    conn = get_conn()
+    try:
+        user = fetch_user(conn, req.username)
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        post = conn.execute(
+            "SELECT user_id FROM posts WHERE post_id=?",
+            (post_id,),
+        ).fetchone()
+        if not post:
+            raise HTTPException(404, "Post not found")
+        if post["user_id"] != user["user_id"]:
+            raise HTTPException(403, "You can only delete your own posts")
+
+        conn.execute("DELETE FROM posts WHERE post_id=?", (post_id,))
+        conn.commit()
+        return {"message": "Post deleted successfully"}
     finally:
         conn.close()
 
