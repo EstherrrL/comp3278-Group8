@@ -127,9 +127,10 @@
           <div>
             <label class="mb-2 block text-sm font-semibold text-slate-700" for="register-username">New Username</label>
             <input id="register-username" class="w-full rounded-[1.5rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Create a new username">
+            <p id="register-username-feedback" class="hidden pt-2 text-sm font-medium text-red-600"></p>
           </div>
           <div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm leading-7 text-slate-600 ring-1 ring-orange-100">
-            After registration, you will be redirected straight to the main app.
+            When you register successfully, you will be directly entered the app.
           </div>
           <button id="register-button" class="w-full rounded-[1.5rem] bg-emerald-600 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-500">Register and Enter App</button>
         </section>
@@ -156,6 +157,18 @@
       const element = $("auth-status");
       element.className = `mt-5 rounded-2xl px-4 py-3 text-sm ${tone === "success" ? "message-success" : tone === "error" ? "message-error" : "message-neutral"}`;
       element.textContent = message;
+    }
+
+    function setRegisterFieldFeedback(message = "") {
+      const feedback = $("register-username-feedback");
+      const input = $("register-username");
+      const hasMessage = Boolean(message);
+
+      feedback.textContent = message;
+      feedback.classList.toggle("hidden", !hasMessage);
+      input.classList.toggle("border-red-400", hasMessage);
+      input.classList.toggle("focus:border-red-400", hasMessage);
+      input.classList.toggle("focus:border-orange-400", !hasMessage);
     }
 
     function loadKnownUsers() {
@@ -264,11 +277,17 @@
 
     async function handleRegister() {
       const username = $("register-username").value.trim();
+      setRegisterFieldFeedback();
       if (!username) {
-        setAuthStatus("Please enter a username to register.", "error");
+        setRegisterFieldFeedback("Please enter a username to register.");
         return;
       }
       try {
+        const users = await refreshBackendUsers();
+        if (users.includes(username)) {
+          setRegisterFieldFeedback("This username already exists. Please choose another one.");
+          return;
+        }
         await fetchJson(`${API_BASE}/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -276,7 +295,7 @@
         });
         enterApp(username);
       } catch (error) {
-        setAuthStatus(error.message, "error");
+        setRegisterFieldFeedback(error.message);
       }
     }
 
@@ -288,6 +307,9 @@
       });
       $("login-button").addEventListener("click", handleLogin);
       $("register-button").addEventListener("click", handleRegister);
+      $("register-username").addEventListener("input", () => {
+        setRegisterFieldFeedback();
+      });
       $("login-username").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();

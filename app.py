@@ -197,7 +197,7 @@ def get_users():
     conn.close()
     return [row["username"] for row in rows]
 
-@app.post("/users")
+@app.post("/users", status_code=201)
 def create_user(req: CreateUser):
     conn = get_conn()
     try:
@@ -205,7 +205,7 @@ def create_user(req: CreateUser):
         conn.commit()
         return {"message": "User created successfully"}
     except sqlite3.IntegrityError:
-        return {"message": "Username already exists"}
+        raise HTTPException(409, "Username already exists")
     finally:
         conn.close()
 

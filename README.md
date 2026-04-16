@@ -347,7 +347,7 @@ python app.py
 ### API Endpoints
 
 #### `POST /users`
-Create a new user. Silently ignores duplicate usernames (`INSERT OR IGNORE`).
+Create a new user. Usernames must be unique.
 
 **Request body**
 ```json
@@ -355,8 +355,10 @@ Create a new user. Silently ignores duplicate usernames (`INSERT OR IGNORE`).
 ```
 **Response**
 ```json
-{ "message": "用户创建成功" }
+{ "message": "User created successfully" }
 ```
+
+**Error** — `409` if the username already exists.
 
 ---
 
