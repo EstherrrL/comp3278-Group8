@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
 
-DB_PATH = str(Path(__file__).with_name("social_app.db"))
+DEFAULT_DB_PATH = Path(__file__).with_name("social_app.db")
+DB_PATH = str(Path(os.getenv("HKUGRAM_DB_PATH", DEFAULT_DB_PATH)).expanduser().resolve())
 
 
 SCHEMA_SQL = """
@@ -60,10 +62,18 @@ CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id);
 """
 
 
+def set_db_path(db_path: str) -> None:
+    global DB_PATH
+    DB_PATH = str(Path(db_path).expanduser().resolve())
+
+
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

@@ -304,10 +304,10 @@ conn.close()
 
 ### Demo mode — reset & seed data
 
-Drops and recreates `social_app.db`, then inserts 5 users, 8 posts, 14 like relationships, and 8 comments (including threaded replies). Use this before a live demo.
+Drops and recreates `social_app.db`, then inserts 5 users, 8 posts, 14 like relationships, and 8 comments (including threaded replies). Use this only when you explicitly want to reset the database before a live demo.
 
 ```bash
-python test_db.py
+python test_db.py --reset
 ```
 
 ### Check mode — validate existing data only
@@ -315,8 +315,11 @@ python test_db.py
 Runs the feed, user-history, and cascade-delete checks against the current database without modifying it.
 
 ```bash
+python test_db.py
 python test_db.py --check
 ```
+
+Running `python test_db.py` without flags is now safe by default and will not delete previously registered users or posts.
 
 ### Test coverage
 

@@ -33,6 +33,14 @@ class CreateUserTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 409)
         self.assertEqual(context.exception.detail, "Username already exists")
 
+    def test_user_persists_after_reinitializing_app(self):
+        social_app.create_user(social_app.CreateUser(username="persistent_user"))
+
+        social_app.init_db()
+
+        users = social_app.get_users()
+        self.assertIn("persistent_user", users)
+
 
 if __name__ == "__main__":
     unittest.main()

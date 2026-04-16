@@ -3,7 +3,8 @@ test_db.py
 HKUgram Group8 — 数据库测试 & 演示数据填充脚本
 
 运行方式：
-    python test_db.py          # 重置并填充演示数据（用于 demo）
+    python test_db.py --reset  # 重置并填充演示数据（用于 demo）
+    python test_db.py          # 默认仅验证现有数据，不修改数据库
     python test_db.py --check  # 仅验证现有数据，不修改数据库
 
 测试内容：
@@ -290,7 +291,8 @@ def test_cascade(conn):
 # 主入口
 # ──────────────────────────────────────────────
 def main():
-    check_only = "--check" in sys.argv
+    reset_demo_data = "--reset" in sys.argv
+    check_only = "--check" in sys.argv or not reset_demo_data
 
     if check_only:
         section("CHECK MODE — 仅验证现有数据")

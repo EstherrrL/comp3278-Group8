@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import database as database_module
 
 # ===================== Vanna =====================
 from vanna import Agent, AgentConfig
@@ -24,8 +25,8 @@ from vanna.core.user import UserResolver, User, RequestContext
 from vanna.integrations.local.agent_memory import DemoAgentMemory
 
 # ===================== 全局配置 =====================
-#数据库文件路径
-DB_PATH = "social_app.db"
+# 数据库文件路径
+DB_PATH = database_module.DB_PATH
 
 app = FastAPI(title="HKUgram - Group8 最终完美版")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -166,60 +167,20 @@ class DeleteComment(BaseModel):
     username: str
 
 # ===================== DB Helper =====================
+def _sync_db_path() -> None:
+    if database_module.DB_PATH != DB_PATH:
+        database_module.set_db_path(DB_PATH)
+
+
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    _sync_db_path()
+    return database_module.get_conn()
+
 
 # ===================== 初始化数据库 =====================
 def init_db():
-    conn = get_conn()
-    # 创建用户表
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL
-        )
-    """)
-    # 创建帖子表
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            post_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            content TEXT,
-            image_url TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            likes_count INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(user_id)
-        )
-    """)
-    # 创建点赞表
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS likes (
-            like_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            post_id INTEGER NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(user_id),
-            FOREIGN KEY (post_id) REFERENCES posts(post_id),
-            UNIQUE(user_id, post_id)
-        )
-    """)
-    # 创建评论表（支持嵌套回复）
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS comments (
-            comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            post_id INTEGER NOT NULL,
-            content TEXT NOT NULL,
-            parent_comment_id INTEGER,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(user_id),
-            FOREIGN KEY (post_id) REFERENCES posts(post_id),
-            FOREIGN KEY (parent_comment_id) REFERENCES comments(comment_id)
-        )
-    """)
-    conn.commit()
-    conn.close()
+    _sync_db_path()
+    database_module.init_db()
 
 # 初始化数据库
 init_db()
@@ -265,72 +226,107 @@ def create_user(req: CreateUser):
 @app.post("/posts")
 def create_post(req: CreatePost):
     conn = get_conn()
-    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
-    if not user:
-        raise HTTPException(404, "User not found")
-    conn.execute("INSERT INTO posts (user_id, content, image_url) VALUES (?,?,?)",
-                 (user["user_id"], req.content, req.image_url))
-    conn.commit()
-    conn.close()
-    return {"message": "Post published successfully"}
+    try:
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+        conn.execute(
+            "INSERT INTO posts (user_id, content, image_url) VALUES (?,?,?)",
+            (user["user_id"], req.content, req.image_url),
+        )
+        conn.commit()
+        return {"message": "Post published successfully"}
+    finally:
+        conn.close()
 
 @app.post("/likes/toggle")
 def toggle_like(req: ToggleLike):
     conn = get_conn()
-    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
-    if not user: 
-        raise HTTPException(404, "User not found")
-    liked = conn.execute("SELECT 1 FROM likes WHERE user_id=? AND post_id=?", (user["user_id"], req.post_id)).fetchone()
-    if liked:
-        conn.execute("DELETE FROM likes WHERE user_id=? AND post_id=?", (user["user_id"], req.post_id))
-        conn.execute("UPDATE posts SET likes_count = likes_count - 1 WHERE post_id=?", (req.post_id,))
-    else:
-        conn.execute("INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?,?)", (user["user_id"], req.post_id))
-        conn.execute("UPDATE posts SET likes_count = likes_count + 1 WHERE post_id=?", (req.post_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Like toggled successfully"}
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        post = conn.execute("SELECT 1 FROM posts WHERE post_id=?", (req.post_id,)).fetchone()
+        if not post:
+            raise HTTPException(404, "Post not found")
+
+        deleted = conn.execute(
+            "DELETE FROM likes WHERE user_id=? AND post_id=?",
+            (user["user_id"], req.post_id),
+        ).rowcount
+        if deleted:
+            conn.execute(
+                "UPDATE posts SET likes_count = MAX(likes_count - 1, 0) WHERE post_id=?",
+                (req.post_id,),
+            )
+        else:
+            inserted = conn.execute(
+                "INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?,?)",
+                (user["user_id"], req.post_id),
+            ).rowcount
+            if inserted:
+                conn.execute("UPDATE posts SET likes_count = likes_count + 1 WHERE post_id=?", (req.post_id,))
+
+        conn.commit()
+        return {"message": "Like toggled successfully"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 @app.post("/comments")
 def create_comment(req: CreateComment):
     conn = get_conn()
-    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
-    if not user: 
-        raise HTTPException(404, "User not found")
-    
-    # Verify parent comment exists if provided
-    if req.parent_comment_id:
-        parent = conn.execute("SELECT 1 FROM comments WHERE comment_id=?", (req.parent_comment_id,)).fetchone()
-        if not parent:
-            raise HTTPException(404, "Parent comment not found")
-    
-    conn.execute("""INSERT INTO comments (user_id, post_id, content, parent_comment_id) 
+    try:
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        post = conn.execute("SELECT 1 FROM posts WHERE post_id=?", (req.post_id,)).fetchone()
+        if not post:
+            raise HTTPException(404, "Post not found")
+
+        if req.parent_comment_id:
+            parent = conn.execute(
+                "SELECT 1 FROM comments WHERE comment_id=? AND post_id=?",
+                (req.parent_comment_id, req.post_id),
+            ).fetchone()
+            if not parent:
+                raise HTTPException(404, "Parent comment not found")
+
+        conn.execute(
+            """INSERT INTO comments (user_id, post_id, content, parent_comment_id)
                    VALUES (?,?,?,?)""",
-                 (user["user_id"], req.post_id, req.content, req.parent_comment_id))
-    conn.commit()
-    conn.close()
-    return {"message": "Comment added successfully"}
+            (user["user_id"], req.post_id, req.content, req.parent_comment_id),
+        )
+        conn.commit()
+        return {"message": "Comment added successfully"}
+    finally:
+        conn.close()
 
 @app.delete("/comments/{comment_id}")
 def delete_comment(comment_id: int, req: DeleteComment):
     conn = get_conn()
-    user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
-    if not user:
-        raise HTTPException(404, "User not found")
-    
-    comment = conn.execute("SELECT user_id FROM comments WHERE comment_id=?", (comment_id,)).fetchone()
-    if not comment:
-        raise HTTPException(404, "Comment not found")
-    
-    if comment["user_id"] != user["user_id"]:
-        raise HTTPException(403, "You can only delete your own comments")
-    
-    # Delete all replies first (optional: can also set to NULL or cascade)
-    conn.execute("DELETE FROM comments WHERE parent_comment_id=?", (comment_id,))
-    conn.execute("DELETE FROM comments WHERE comment_id=?", (comment_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Comment deleted successfully"}
+    try:
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        comment = conn.execute("SELECT user_id FROM comments WHERE comment_id=?", (comment_id,)).fetchone()
+        if not comment:
+            raise HTTPException(404, "Comment not found")
+
+        if comment["user_id"] != user["user_id"]:
+            raise HTTPException(403, "You can only delete your own comments")
+
+        conn.execute("DELETE FROM comments WHERE comment_id=?", (comment_id,))
+        conn.commit()
+        return {"message": "Comment deleted successfully"}
+    finally:
+        conn.close()
 
 @app.get("/feed")
 def get_feed(sort: str = "time", limit: int = 50, search: Optional[str] = None, viewer: Optional[str] = None):
@@ -497,7 +493,7 @@ def get_user_stats(username: str):
     
     # 获取用户给出的点赞数
     likes_given = conn.execute("""
-        SELECT COUNT(l.like_id) as likes_given
+        SELECT COUNT(*) as likes_given
         FROM likes l
         WHERE l.user_id = ?
     """, (user_id,)).fetchone()
