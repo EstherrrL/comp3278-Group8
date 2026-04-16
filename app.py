@@ -67,62 +67,97 @@ async def vanna_chat(request: Request):
         if not question:
             return {"response": "Please ask a question about users, posts, likes or comments."}
 
-        context = RequestContext(
-            user_id="student",
-            user_email="student@hku.hk"
-        )
+        # Get the database schema for context
+        conn = get_conn()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
 
+        schema_parts = []
+        for table in tables:
+            table_name = table['name']
+            columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            col_list = [f"  {col['name']} ({col['type']})" for col in columns]
+            schema_parts.append(f"Table: {table_name}\n" + "\n".join(col_list))
+        conn.close()
+
+        schema_text = "\n\n".join(schema_parts)
+
+        # Use the agent to generate SQL
+        context = RequestContext(user_id="student", user_email="student@hku.hk")
         response_generator = agent.send_message(
             request_context=context,
-            message=question
+            message=f"""Given this database schema:
+            {schema_text}
+
+            For the question: "{question}"
+
+            Generate a SQL query that:
+            - Joins tables when needed to show meaningful information (e.g., usernames instead of user_ids, post content instead of just post_ids)
+            - If asking about posts, include the post content and the author's username
+            - If asking about likes, use the likes_count column from the posts table directly
+            - Returns human-readable results
+
+            Return ONLY the SQL query, no explanation."""
         )
 
-        final_answer = ""
         sql_query = ""
-        query_result = ""
-
         async for chunk in response_generator:
-            if chunk is None:
-                continue
-
-            # Extract text from simple_component (where Vanna puts plain text answers)
             if hasattr(chunk, 'simple_component') and chunk.simple_component:
                 comp = chunk.simple_component
                 if hasattr(comp, 'text') and comp.text:
                     text = str(comp.text).strip()
-                    if text:
-                        # Identify SQL vs result vs final answer
-                        if text.upper().startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH')):
-                            sql_query = text
-                        elif sql_query and not query_result and not any(word in text.lower() for word in ['perfect', 'summary', 'confirmed']):
-                            query_result = text
-                        else:
-                            final_answer = text
+                    if text.upper().startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH')):
+                        sql_query = text
+                        break
 
-            # Check for errors
-            if hasattr(chunk, 'rich_component') and chunk.rich_component:
-                comp = chunk.rich_component
-                if hasattr(comp, 'status') and comp.status == 'error':
-                    error_msg = getattr(comp, 'description', '') or getattr(comp, 'title', 'Unknown error')
-                    return {"response": f"❌ Error: {error_msg}"}
+        if not sql_query:
+            return {"response": "Could not generate SQL for your question. Please rephrase."}
 
-        # Return the best available response
-        if final_answer:
-            return {"response": final_answer}
-        elif query_result:
-            return {"response": f"**SQL Query:**\n```sql\n{sql_query}\n```\n\n**Result:**\n{query_result}"}
-        elif sql_query:
-            return {"response": f"**Generated SQL:**\n```sql\n{sql_query}\n```\n\n*(No results returned)*"}
-        else:
-            return {"response": "I couldn't generate a response. Please try rephrasing your question."}
+        # Clean up SQL
+        sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+
+        # Execute the SQL query against social_app.db
+        conn = get_conn()
+        try:
+            result = conn.execute(sql_query).fetchall()
+
+            if not result:
+                response = f"No results found for your question."
+            else:
+                # Format results nicely
+                if len(result) == 1 and len(result[0].keys()) == 1:
+                    # Single value result (e.g., COUNT)
+                    value = list(result[0].values())[0]
+                    response = f"{value}"
+                else:
+                    # Multiple rows/columns - format as text table
+                    headers = list(result[0].keys())
+                    response = ""
+
+                    # Add header row
+                    response += " | ".join(headers) + "\n"
+                    response += "-" * 50 + "\n"
+
+                    # Add data rows
+                    for row in result[:20]:  # Limit to 20 rows
+                        response += " | ".join(str(row[h]) for h in headers) + "\n"
+
+                    if len(result) > 20:
+                        response += f"\n... and {len(result) - 20} more rows"
+
+        except Exception as e:
+            response = f"Error executing query: {str(e)}\n\nSQL: {sql_query}"
+        finally:
+            conn.close()
+
+        return {"response": response}
 
     except Exception as e:
         import traceback
         print("=" * 80)
-        print("🚨 Vanna /chat Error:")
+        print("🚨 Chat Error:")
         traceback.print_exc()
         print("=" * 80)
-        return {"response": f"Vanna error: {str(e)}"}
+        return {"response": f"Error: {str(e)}"}
     
 # ===================== 时区工具：UTC → 北京时间 =====================
 from datetime import datetime, timedelta
