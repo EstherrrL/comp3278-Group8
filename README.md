@@ -229,10 +229,42 @@ Stores top-level comments and threaded replies on posts.
 
 ### Prerequisites
 
+**Install Python & pip** if not already available:
+
+#### Windows
+```
+powershell
+# Download Python from https://python.org (installer includes pip)
+# Verify installation
+python --version
+pip --version
 ```bash
 pip install -r requirements.txt
 ```
 
+#### macOS
+```
+# Using Homebrew
+brew install python
+
+# Verify installation
+python3 --version
+pip3 --version
+```
+#### Debian/Ubuntu
+```
+sudo apt update
+sudo apt install python3 python3-pip
+```
+#### Fedora-based
+```
+sudo dnf install python3 python3-pip
+```
+
+#### Arch-based
+```
+sudo pacman -S python python-pip
+```
 ### First run
 
 The database is initialised automatically when `database.py` is imported (the last line calls `init_db()`).  
@@ -243,6 +275,7 @@ python app.py
 # or
 uvicorn app:app --reload
 ```
+
 
 ### Manual initialisation
 
