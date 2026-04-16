@@ -34,7 +34,7 @@ class SimpleUserResolver(UserResolver):
     async def resolve_user(self, request_context: RequestContext) -> User:
         return User(id="student", email="student@hku.hk", group_memberships=["user"])
 
-# ===================== Vanna 配置 =====================
+# ===================== Vanna setup =====================
 tools = ToolRegistry()
 tools.register_local_tool(RunSqlTool(sql_runner=SqliteRunner(DB_PATH)), access_groups=["admin", "user"])
 tools.register_local_tool(VisualizeDataTool(), access_groups=["admin", "user"])
@@ -57,18 +57,71 @@ agent = Agent(
 chat_handler = ChatHandler(agent)
 register_chat_routes(app, chat_handler)
 
-# ===================== 手动 Vanna /chat 接口 =====================
+# ===================== Vanna AI Implementation =====================
 @app.post("/chat")
 async def vanna_chat(request: Request):
     try:
         data = await request.json()
-        question = data.get("question", "")
+        question = data.get("question", "").strip()
         if not question:
-            return {"response": "Please enter a question"}
-        response = agent.ask(question)
-        return {"response": response}
+            return {"response": "Please ask a question about users, posts, likes or comments."}
+
+        context = RequestContext(
+            user_id="student",
+            user_email="student@hku.hk"
+        )
+
+        response_generator = agent.send_message(
+            request_context=context,
+            message=question
+        )
+
+        final_answer = ""
+        sql_query = ""
+        query_result = ""
+
+        async for chunk in response_generator:
+            if chunk is None:
+                continue
+
+            # Extract text from simple_component (where Vanna puts plain text answers)
+            if hasattr(chunk, 'simple_component') and chunk.simple_component:
+                comp = chunk.simple_component
+                if hasattr(comp, 'text') and comp.text:
+                    text = str(comp.text).strip()
+                    if text:
+                        # Identify SQL vs result vs final answer
+                        if text.upper().startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH')):
+                            sql_query = text
+                        elif sql_query and not query_result and not any(word in text.lower() for word in ['perfect', 'summary', 'confirmed']):
+                            query_result = text
+                        else:
+                            final_answer = text
+
+            # Check for errors
+            if hasattr(chunk, 'rich_component') and chunk.rich_component:
+                comp = chunk.rich_component
+                if hasattr(comp, 'status') and comp.status == 'error':
+                    error_msg = getattr(comp, 'description', '') or getattr(comp, 'title', 'Unknown error')
+                    return {"response": f"❌ Error: {error_msg}"}
+
+        # Return the best available response
+        if final_answer:
+            return {"response": final_answer}
+        elif query_result:
+            return {"response": f"**SQL Query:**\n```sql\n{sql_query}\n```\n\n**Result:**\n{query_result}"}
+        elif sql_query:
+            return {"response": f"**Generated SQL:**\n```sql\n{sql_query}\n```\n\n*(No results returned)*"}
+        else:
+            return {"response": "I couldn't generate a response. Please try rephrasing your question."}
+
     except Exception as e:
-        return {"response": f"Vanna temporarily unavailable: {str(e)}"}
+        import traceback
+        print("=" * 80)
+        print("🚨 Vanna /chat Error:")
+        traceback.print_exc()
+        print("=" * 80)
+        return {"response": f"Vanna error: {str(e)}"}
     
 # ===================== 时区工具：UTC → 北京时间 =====================
 from datetime import datetime, timedelta
