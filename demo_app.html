@@ -60,6 +60,38 @@
       box-shadow: 0 12px 30px rgba(200, 90, 27, 0.18);
     }
 
+    .sort-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-width: 13rem;
+    }
+
+    .sort-button-icon {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 1.2rem;
+      line-height: 0.78;
+      font-size: 0.78rem;
+      opacity: 0.5;
+    }
+
+    .sort-button-active .sort-button-icon,
+    .sort-active .sort-button-icon {
+      opacity: 1;
+    }
+
+    .sort-arrow-active {
+      font-weight: 800;
+    }
+
+    .sort-arrow-inactive {
+      opacity: 0.35;
+    }
+
     .like-button-active {
       background: linear-gradient(135deg, #c85a1b 0%, #ef9f59 100%);
       color: #fff;
@@ -454,6 +486,7 @@ window.addEventListener('DOMContentLoaded', () => {
       currentUser: "",
       currentView: "home",
       feedSort: "time",
+      feedOrder: "desc",
       feedLimit: 20,
       feedPosts: [],
       rankingsData: null,
@@ -487,6 +520,60 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       element.className = `mt-5 rounded-2xl px-4 py-3 text-sm ${tone === "success" ? "message-success" : tone === "error" ? "message-error" : "message-neutral"}`;
       element.textContent = message;
+    }
+
+    function getSortButtonText(sortKey) {
+      return sortKey === "time" ? "By Time" : "By Popularity";
+    }
+
+    function renderSortButtonContent(sortKey) {
+      const isActive = STATE.feedSort === sortKey;
+      const isDescending = STATE.feedOrder === "desc";
+      const upClass = isActive && !isDescending ? "sort-arrow-active" : "sort-arrow-inactive";
+      const downClass = isActive && isDescending ? "sort-arrow-active" : "sort-arrow-inactive";
+
+      return `
+        <span>${escapeHtml(getSortButtonText(sortKey))}</span>
+        <span class="sort-button-icon" aria-hidden="true">
+          <span class="${upClass}">↑</span>
+          <span class="${downClass}">↓</span>
+        </span>
+      `;
+    }
+
+    function updateSortButtons() {
+      document.querySelectorAll(".sort-button").forEach((button) => {
+        const isActive = button.dataset.sort === STATE.feedSort;
+        button.classList.toggle("sort-active", isActive);
+        button.innerHTML = renderSortButtonContent(button.dataset.sort);
+        button.setAttribute(
+          "aria-label",
+          `${getSortButtonText(button.dataset.sort)} ${isActive ? (STATE.feedOrder === "desc" ? "descending" : "ascending") : "toggle"}`
+        );
+      });
+    }
+
+    function compareFeedPosts(leftPost, rightPost) {
+      if (STATE.feedSort === "popularity") {
+        const likeDifference = Number(leftPost.like_count || 0) - Number(rightPost.like_count || 0);
+        if (likeDifference !== 0) {
+          return STATE.feedOrder === "asc" ? likeDifference : -likeDifference;
+        }
+      }
+
+      const leftTimestamp = String(leftPost.created_at || "");
+      const rightTimestamp = String(rightPost.created_at || "");
+      const timeDifference = leftTimestamp.localeCompare(rightTimestamp);
+      if (timeDifference !== 0) {
+        return STATE.feedOrder === "asc" ? timeDifference : -timeDifference;
+      }
+
+      const idDifference = Number(leftPost.id || 0) - Number(rightPost.id || 0);
+      return STATE.feedOrder === "asc" ? idDifference : -idDifference;
+    }
+
+    function sortFeedPosts(posts) {
+      return [...posts].sort(compareFeedPosts);
     }
 
     async function fetchJson(url, options = {}) {
@@ -1025,20 +1112,19 @@ window.addEventListener('DOMContentLoaded', () => {
     async function refreshFeed() {
       const container = $("feed-container");
       container.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">Loading feed...</div>';
-      document.querySelectorAll(".sort-button").forEach((button) => {
-        button.classList.toggle("sort-active", button.dataset.sort === STATE.feedSort);
-      });
+      updateSortButtons();
       try {
         const params = new URLSearchParams({
           sort: STATE.feedSort,
+          order: STATE.feedOrder,
           limit: String(STATE.feedLimit),
           viewer: STATE.currentUser
         });
         const posts = await fetchJson(`${API_BASE}/feed?${params.toString()}`);
-        STATE.feedPosts = posts.map((post) => ({
+        STATE.feedPosts = sortFeedPosts(posts.map((post) => ({
           ...post,
           liked_by_viewer: Boolean(post.liked_by_viewer)
-        }));
+        })));
         container.innerHTML = "";
         if (!STATE.feedPosts.length) {
           container.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">No posts yet.</div>';
@@ -1465,7 +1551,13 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       document.querySelectorAll(".sort-button").forEach((button) => {
         button.addEventListener("click", () => {
-          STATE.feedSort = button.dataset.sort;
+          const nextSort = button.dataset.sort;
+          if (STATE.feedSort === nextSort) {
+            STATE.feedOrder = STATE.feedOrder === "desc" ? "asc" : "desc";
+          } else {
+            STATE.feedSort = nextSort;
+            STATE.feedOrder = "desc";
+          }
           refreshFeed();
         });
       });

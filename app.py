@@ -562,8 +562,21 @@ def delete_comment(comment_id: int, req: DeleteComment):
         conn.close()
 
 @app.get("/feed")
-def get_feed(sort: str = "time", limit: int = 50, search: Optional[str] = None, viewer: Optional[str] = None):
-    order_by = "p.timestamp DESC" if sort == "time" else "p.likes_count DESC"
+def get_feed(
+    sort: str = "time",
+    order: str = "desc",
+    limit: int = 50,
+    search: Optional[str] = None,
+    viewer: Optional[str] = None,
+):
+    normalized_sort = sort if sort in {"time", "popularity"} else "time"
+    normalized_order = order if order in {"asc", "desc"} else "desc"
+
+    if normalized_sort == "time":
+        order_by = "p.timestamp DESC, p.post_id DESC" if normalized_order == "desc" else "p.timestamp ASC, p.post_id ASC"
+    else:
+        order_by = "p.likes_count DESC, p.timestamp DESC, p.post_id DESC" if normalized_order == "desc" else "p.likes_count ASC, p.timestamp ASC, p.post_id ASC"
+
     conn = get_conn()
     query = f"""
         SELECT p.post_id as id, u.username, p.content as text_content, 

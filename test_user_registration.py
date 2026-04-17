@@ -187,5 +187,42 @@ class AnalyticsRankingTests(unittest.TestCase):
         self.assertEqual(rankings["most_discussed_posts"][1]["comment_count"], 2)
 
 
+class FeedSortingTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.original_db_path = social_app.DB_PATH
+        social_app.DB_PATH = str(Path(self.temp_dir.name) / "test_social_app.db")
+        social_app.init_db()
+
+        for username in ["alice", "bob", "carol"]:
+            social_app.create_user(social_app.CreateUser(username=username))
+
+        social_app.create_post(social_app.CreatePost(username="alice", content="first post"))
+        social_app.create_post(social_app.CreatePost(username="bob", content="second post"))
+        social_app.create_post(social_app.CreatePost(username="carol", content="third post"))
+
+        social_app.toggle_like(social_app.ToggleLike(username="bob", post_id=1))
+        social_app.toggle_like(social_app.ToggleLike(username="carol", post_id=1))
+        social_app.toggle_like(social_app.ToggleLike(username="alice", post_id=2))
+
+    def tearDown(self):
+        social_app.DB_PATH = self.original_db_path
+        self.temp_dir.cleanup()
+
+    def test_feed_can_sort_by_time_in_both_directions(self):
+        newest_first = social_app.get_feed(sort="time", order="desc")
+        oldest_first = social_app.get_feed(sort="time", order="asc")
+
+        self.assertEqual([post["id"] for post in newest_first], [3, 2, 1])
+        self.assertEqual([post["id"] for post in oldest_first], [1, 2, 3])
+
+    def test_feed_can_sort_by_popularity_in_both_directions(self):
+        most_liked_first = social_app.get_feed(sort="popularity", order="desc")
+        least_liked_first = social_app.get_feed(sort="popularity", order="asc")
+
+        self.assertEqual([post["id"] for post in most_liked_first], [1, 2, 3])
+        self.assertEqual([post["id"] for post in least_liked_first], [3, 2, 1])
+
+
 if __name__ == "__main__":
     unittest.main()
