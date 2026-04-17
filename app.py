@@ -47,6 +47,14 @@ async def serve_login():
     """Serve the login page"""
     return FileResponse(os.path.join(BASE_DIR, "demo_index.html"))
 
+@app.get("/demo_index.html")
+async def login_page():
+    return FileResponse(os.path.join(BASE_DIR, "demo_index.html"))
+
+@app.get("/demo_app.html")
+async def app_page():
+    return FileResponse(os.path.join(BASE_DIR, "demo_app.html"))
+    
 @app.get("/app")
 async def serve_app():
     """Serve the main app page"""
