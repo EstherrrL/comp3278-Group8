@@ -754,6 +754,101 @@ def get_top_liked_users(limit: int = 10):
     conn.close()
     return [dict(row) for row in rows]
 
+
+@app.get("/analytics/rankings")
+def get_rankings(limit: int = 3):
+    """Return compact leaderboard data for frontend ranking panels."""
+    normalized_limit = max(1, min(limit, 10))
+    conn = get_conn()
+
+    total_users = conn.execute("SELECT COUNT(*) as count FROM users").fetchone()
+    total_posts = conn.execute("SELECT COUNT(*) as count FROM posts").fetchone()
+    total_comments = conn.execute("SELECT COUNT(*) as count FROM comments").fetchone()
+    total_likes = conn.execute("SELECT COUNT(*) as count FROM likes").fetchone()
+
+    most_liked_post_rows = conn.execute(
+        """
+        SELECT p.post_id as id, u.username, p.content as text_content,
+               p.image_url, p.image_urls, p.timestamp as created_at,
+               p.likes_count as like_count, COUNT(c.comment_id) as comment_count
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        LEFT JOIN comments c ON c.post_id = p.post_id
+        GROUP BY p.post_id, u.username, p.content, p.image_url, p.image_urls, p.timestamp, p.likes_count
+        ORDER BY p.likes_count DESC, comment_count DESC, p.timestamp DESC
+        LIMIT ?
+        """,
+        (normalized_limit,),
+    ).fetchall()
+
+    most_discussed_post_rows = conn.execute(
+        """
+        SELECT p.post_id as id, u.username, p.content as text_content,
+               p.image_url, p.image_urls, p.timestamp as created_at,
+               p.likes_count as like_count, COUNT(c.comment_id) as comment_count
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        LEFT JOIN comments c ON c.post_id = p.post_id
+        GROUP BY p.post_id, u.username, p.content, p.image_url, p.image_urls, p.timestamp, p.likes_count
+        ORDER BY comment_count DESC, p.likes_count DESC, p.timestamp DESC
+        LIMIT ?
+        """,
+        (normalized_limit,),
+    ).fetchall()
+
+    most_active_user_rows = conn.execute(
+        """
+        SELECT u.username,
+               COALESCE(post_stats.post_count, 0) as post_count,
+               COALESCE(comment_stats.comment_count, 0) as comment_count,
+               COALESCE(post_stats.total_likes, 0) as total_likes
+        FROM users u
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as post_count, COALESCE(SUM(likes_count), 0) as total_likes
+            FROM posts
+            GROUP BY user_id
+        ) post_stats ON post_stats.user_id = u.user_id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) as comment_count
+            FROM comments
+            GROUP BY user_id
+        ) comment_stats ON comment_stats.user_id = u.user_id
+        ORDER BY post_count DESC, comment_count DESC, total_likes DESC, u.username ASC
+        LIMIT ?
+        """,
+        (normalized_limit,),
+    ).fetchall()
+
+    top_liked_user_rows = conn.execute(
+        """
+        SELECT u.username,
+               COALESCE(SUM(p.likes_count), 0) as total_likes,
+               COUNT(p.post_id) as post_count
+        FROM users u
+        LEFT JOIN posts p ON p.user_id = u.user_id
+        GROUP BY u.user_id, u.username
+        HAVING total_likes > 0
+        ORDER BY total_likes DESC, post_count DESC, u.username ASC
+        LIMIT ?
+        """,
+        (normalized_limit,),
+    ).fetchall()
+
+    conn.close()
+
+    return {
+        "summary": {
+            "total_users": total_users["count"] or 0,
+            "total_posts": total_posts["count"] or 0,
+            "total_comments": total_comments["count"] or 0,
+            "total_likes": total_likes["count"] or 0,
+        },
+        "most_liked_posts": [serialize_post_row(row) for row in most_liked_post_rows],
+        "most_active_users": [dict(row) for row in most_active_user_rows],
+        "most_discussed_posts": [serialize_post_row(row) for row in most_discussed_post_rows],
+        "top_liked_users": [dict(row) for row in top_liked_user_rows],
+    }
+
 #平台数据总览
 @app.get("/analytics/dashboard")
 def get_dashboard_stats():

@@ -273,6 +273,7 @@
       <aside class="glass rounded-[2rem] p-4 shadow-card">
         <nav class="space-y-2">
           <button data-view="home" class="nav-button w-full rounded-[1.3rem] border border-orange-100 bg-white px-4 py-4 text-left font-bold text-slate-700 transition">Home Feed</button>
+          <button data-view="rankings" class="nav-button w-full rounded-[1.3rem] border border-orange-100 bg-white px-4 py-4 text-left font-bold text-slate-700 transition">Rankings</button>
           <button data-view="create" class="nav-button w-full rounded-[1.3rem] border border-orange-100 bg-white px-4 py-4 text-left font-bold text-slate-700 transition">Create Post</button>
           <button data-view="profile" class="nav-button w-full rounded-[1.3rem] border border-orange-100 bg-white px-4 py-4 text-left font-bold text-slate-700 transition">Profile</button>
           <button data-view="ai" class="nav-button w-full rounded-[1.3rem] border border-orange-100 bg-white px-4 py-4 text-left font-bold text-slate-700 transition">AI Query</button>
@@ -302,6 +303,19 @@
             </div>
           </div>
           <div id="feed-container" class="mt-6 space-y-5"></div>
+        </section>
+
+        <section id="view-rankings" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p class="panel-tag">Insights</p>
+              <h3 class="mt-2 text-3xl font-extrabold">Top 3 Rankings</h3>
+              <p class="mt-3 text-sm leading-7 text-slate-600">Current podium view for the community. Gold, silver, and bronze are updated from the latest platform statistics.</p>
+            </div>
+            <button id="refresh-rankings-button" class="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">Refresh Rankings</button>
+          </div>
+          <div id="rankings-summary" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+          <div id="rankings-grid" class="mt-6 grid gap-5 xl:grid-cols-3"></div>
         </section>
 
         <section id="view-create" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
@@ -377,9 +391,16 @@
       feedSort: "time",
       feedLimit: 20,
       feedPosts: [],
+      rankingsData: null,
       replyState: {},
       profileEditState: {}
     };
+
+    const RANK_BADGES = [
+      { emoji: "🏅️", label: "Gold", classes: "bg-amber-50 text-amber-700 ring-amber-200" },
+      { emoji: "🥈", label: "Silver", classes: "bg-slate-100 text-slate-700 ring-slate-200" },
+      { emoji: "🥉", label: "Bronze", classes: "bg-orange-50 text-orange-700 ring-orange-200" }
+    ];
 
     function $(id) {
       return document.getElementById(id);
@@ -418,6 +439,72 @@
         throw new Error(message);
       }
       return payload;
+    }
+
+    function getRankBadge(index) {
+      return RANK_BADGES[index] || { emoji: `#${index + 1}`, label: `Rank ${index + 1}`, classes: "bg-slate-100 text-slate-700 ring-slate-200" };
+    }
+
+    function groupRankingsBy(items, getScore) {
+      const groups = [];
+      let currentScore = null;
+
+      (items || []).forEach((item) => {
+        const score = Number(getScore(item) || 0);
+        if (!groups.length || score !== currentScore) {
+          if (groups.length >= 3) {
+            return;
+          }
+          currentScore = score;
+          groups.push({ score, items: [item] });
+          return;
+        }
+        groups[groups.length - 1].items.push(item);
+      });
+
+      return groups;
+    }
+
+    function renderRankGroup(group, index, renderItem, scoreLabel) {
+      const badge = getRankBadge(index);
+      return `
+        <div class="rounded-[1.4rem] bg-orange-50/45 p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-extrabold ring-1 ${badge.classes}">
+              <span>${badge.emoji}</span>
+              <span>${escapeHtml(badge.label)}</span>
+            </div>
+            <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-orange-100">${escapeHtml(group.score)} ${escapeHtml(scoreLabel)}</div>
+          </div>
+          <div class="mt-4 space-y-3">
+            ${group.items.map((item) => renderItem(item)).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPostRankingItem(item, primaryStatLabel, primaryStatValue, secondaryHtml = "") {
+      return `
+        <div class="rounded-[1.2rem] bg-white p-4 ring-1 ring-orange-100">
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-sm font-bold text-slate-900">@${escapeHtml(item.username || "unknown")}</div>
+            <div class="text-xs text-slate-400">Post #${escapeHtml(item.id || "-")}</div>
+          </div>
+          <div class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">${escapeHtml(String(item.text_content || "").trim() || "Image-only post")}</div>
+          <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+            <span class="rounded-full bg-orange-50 px-3 py-1 text-ember">${escapeHtml(primaryStatValue)} ${escapeHtml(primaryStatLabel)}</span>
+            ${secondaryHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderUsernameRankingItem(item) {
+      return `
+        <div class="rounded-[1.2rem] bg-white px-4 py-3 ring-1 ring-orange-100 text-base font-extrabold text-slate-900">
+          @${escapeHtml(item.username || "unknown")}
+        </div>
+      `;
     }
 
     function updateSessionHeader() {
@@ -573,8 +660,140 @@
       if (view === "home") {
         refreshFeed();
       }
+      if (view === "rankings") {
+        refreshRankings();
+      }
       if (view === "profile") {
         refreshProfile();
+      }
+    }
+
+    function renderRankings() {
+      const summaryContainer = $("rankings-summary");
+      const gridContainer = $("rankings-grid");
+      const rankings = STATE.rankingsData;
+
+      if (!summaryContainer || !gridContainer) {
+        return;
+      }
+
+      if (!rankings) {
+        summaryContainer.innerHTML = "";
+        gridContainer.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100 xl:col-span-3">No ranking data loaded yet.</div>';
+        return;
+      }
+
+      const summary = rankings.summary || {};
+      const summaryItems = [
+        { label: "Users", value: Number(summary.total_users || 0) },
+        { label: "Posts", value: Number(summary.total_posts || 0) },
+        { label: "Comments", value: Number(summary.total_comments || 0) },
+        { label: "Likes", value: Number(summary.total_likes || 0) }
+      ];
+
+      summaryContainer.innerHTML = summaryItems.map((item) => `
+        <div class="rounded-[1.5rem] bg-white px-5 py-4 ring-1 ring-orange-100">
+          <div class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">${escapeHtml(item.label)}</div>
+          <div class="mt-3 text-3xl font-extrabold text-slate-900">${escapeHtml(item.value)}</div>
+        </div>
+      `).join("");
+
+      const sections = [
+        {
+          title: "Most-Liked Posts",
+          subtitle: "Grouped by likes. Ties share the same medal.",
+          groups: groupRankingsBy(rankings.most_liked_posts || [], (item) => item.like_count),
+          scoreLabel: "likes",
+          renderItem: (item) => renderPostRankingItem(
+            item,
+            "likes",
+            Number(item.like_count || 0),
+            `<span class="rounded-full bg-slate-100 px-3 py-1">${escapeHtml(Number(item.comment_count || 0))} comments</span>`
+          )
+        },
+        {
+          title: "Most Active Users",
+          subtitle: "Grouped by post count. Users with the same count share the same medal.",
+          groups: groupRankingsBy(rankings.most_active_users || [], (item) => item.post_count),
+          scoreLabel: "posts",
+          renderItem: (item) => renderUsernameRankingItem(item)
+        },
+        {
+          title: "Top Liked Users",
+          subtitle: "Grouped by total likes earned across all posts.",
+          groups: groupRankingsBy(rankings.top_liked_users || [], (item) => item.total_likes),
+          scoreLabel: "likes",
+          renderItem: (item) => renderUsernameRankingItem(item)
+        }
+      ];
+
+      gridContainer.innerHTML = sections.map((section) => `
+        <article class="rounded-[1.7rem] bg-white p-5 ring-1 ring-orange-100">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-[0.18em] text-ember">${escapeHtml(section.title)}</div>
+            <div class="mt-2 text-sm leading-6 text-slate-500">${escapeHtml(section.subtitle)}</div>
+          </div>
+          <div class="mt-5 space-y-4">
+            ${section.groups.length ? section.groups.map((group, index) => renderRankGroup(group, index, section.renderItem, section.scoreLabel)).join("") : '<div class="rounded-[1.4rem] bg-slate-50 px-4 py-3 text-sm text-slate-500">No ranking data available yet.</div>'}
+          </div>
+        </article>
+      `).join("");
+    }
+
+    async function fetchLegacyRankings() {
+      const [dashboard, topPosts, activeUsers, topLikedUsers] = await Promise.all([
+        fetchJson(`${API_BASE}/analytics/dashboard`),
+        fetchJson(`${API_BASE}/analytics/top-posts?limit=10`),
+        fetchJson(`${API_BASE}/analytics/most-active-users?limit=10`),
+        fetchJson(`${API_BASE}/analytics/top-liked-users?limit=10`)
+      ]);
+
+      return {
+        summary: {
+          total_users: Number(dashboard.total_users || 0),
+          total_posts: Number(dashboard.total_posts || 0),
+          total_comments: Number(dashboard.total_comments || 0),
+          total_likes: Number(dashboard.total_likes || 0)
+        },
+        most_liked_posts: Array.isArray(topPosts) ? topPosts : [],
+        most_active_users: Array.isArray(activeUsers)
+          ? activeUsers.map((user) => ({
+              ...user,
+              comment_count: Number(user.comment_count || 0),
+              total_likes: Number(user.total_likes || 0)
+            }))
+          : [],
+        top_liked_users: Array.isArray(topLikedUsers) ? topLikedUsers : []
+      };
+    }
+
+    async function refreshRankings() {
+      const summaryContainer = $("rankings-summary");
+      const gridContainer = $("rankings-grid");
+      if (summaryContainer) {
+        summaryContainer.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100 sm:col-span-2 xl:col-span-4">Loading ranking summary...</div>';
+      }
+      if (gridContainer) {
+        gridContainer.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100 xl:col-span-3">Loading rankings...</div>';
+      }
+      try {
+        try {
+          const rankings = await fetchJson(`${API_BASE}/analytics/rankings?limit=10`);
+          STATE.rankingsData = {
+            ...rankings,
+            top_liked_users: Array.isArray(rankings.top_liked_users) ? rankings.top_liked_users : []
+          };
+        } catch (error) {
+          STATE.rankingsData = await fetchLegacyRankings();
+        }
+        renderRankings();
+      } catch (error) {
+        if (summaryContainer) {
+          summaryContainer.innerHTML = "";
+        }
+        if (gridContainer) {
+          gridContainer.innerHTML = `<div class="rounded-[1.5rem] bg-rose-50 px-5 py-4 text-sm text-rose-700 xl:col-span-3">${escapeHtml(error.message)}</div>`;
+        }
       }
     }
 
@@ -1190,6 +1409,7 @@
         refreshFeed();
       });
       $("refresh-feed-button").addEventListener("click", refreshFeed);
+      $("refresh-rankings-button").addEventListener("click", refreshRankings);
       $("create-post-button").addEventListener("click", createPost);
       $("refresh-profile-button").addEventListener("click", refreshProfile);
       $("profile-edit-username-btn").addEventListener("click", toggleEditUsername);

@@ -115,5 +115,77 @@ class PostOwnershipTests(unittest.TestCase):
         self.assertEqual(social_app.get_user_posts("alice"), [])
 
 
+class AnalyticsRankingTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.original_db_path = social_app.DB_PATH
+        social_app.DB_PATH = str(Path(self.temp_dir.name) / "test_social_app.db")
+        social_app.init_db()
+
+        for username in ["alice", "bob", "carol", "david"]:
+            social_app.create_user(social_app.CreateUser(username=username))
+
+        social_app.create_post(social_app.CreatePost(username="alice", content="Alice post 1"))
+        social_app.create_post(social_app.CreatePost(username="alice", content="Alice post 2"))
+        social_app.create_post(social_app.CreatePost(username="bob", content="Bob post 1"))
+        social_app.create_post(social_app.CreatePost(username="carol", content="Carol post 1"))
+
+        like_pairs = [
+            ("bob", 1),
+            ("carol", 1),
+            ("david", 1),
+            ("alice", 2),
+            ("bob", 2),
+            ("alice", 3),
+        ]
+        for username, post_id in like_pairs:
+            social_app.toggle_like(social_app.ToggleLike(username=username, post_id=post_id))
+
+        comments = [
+            ("bob", 1, "Great post"),
+            ("carol", 1, "Same here"),
+            ("david", 1, "Nice one"),
+            ("alice", 3, "Replying on Bob post"),
+            ("carol", 3, "Another Bob thread comment"),
+            ("bob", 2, "Comment on Alice second post"),
+        ]
+        for username, post_id, content in comments:
+            social_app.create_comment(
+                social_app.CreateComment(
+                    username=username,
+                    post_id=post_id,
+                    content=content,
+                )
+            )
+
+    def tearDown(self):
+        social_app.DB_PATH = self.original_db_path
+        self.temp_dir.cleanup()
+
+    def test_rankings_endpoint_returns_expected_podiums(self):
+        rankings = social_app.get_rankings(limit=3)
+
+        self.assertEqual(
+            rankings["summary"],
+            {
+                "total_users": 4,
+                "total_posts": 4,
+                "total_comments": 6,
+                "total_likes": 6,
+            },
+        )
+
+        self.assertEqual([post["id"] for post in rankings["most_liked_posts"]], [1, 2, 3])
+        self.assertEqual(rankings["most_liked_posts"][0]["like_count"], 3)
+        self.assertEqual(rankings["most_liked_posts"][0]["comment_count"], 3)
+
+        self.assertEqual([user["username"] for user in rankings["most_active_users"]], ["alice", "bob", "carol"])
+        self.assertEqual(rankings["most_active_users"][0]["post_count"], 2)
+        self.assertEqual(rankings["most_active_users"][1]["comment_count"], 2)
+
+        self.assertEqual([post["id"] for post in rankings["most_discussed_posts"]], [1, 3, 2])
+        self.assertEqual(rankings["most_discussed_posts"][1]["comment_count"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
