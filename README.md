@@ -298,6 +298,74 @@ conn.close()
 
 ---
 
+## Setting up multiple devices
+
+### Prerequisite
+
+Open port 8000 on your firewall on your server device, for me that would be
+```bash
+- sudo firewall-cmd --permanent --add-port=8000/tcp
+- sudo firewall-cmd --reload
+```
+in the bash terminal, since I have firewalld running on linux.
+Different OS have different ways, different firewalls, try to search for it.
+
+In addition, on your server pc, find your local ip
+In general, it looks something like 192.168.x.xxx
+
+#### MACOS
+```
+ifconfig | grep "inet " | grep -v 127.0.0.1
+```
+
+#### Windows
+Press windows + R, type cmd, enter.
+```
+ipconfig
+```
+Look for an IPv4 address
+
+#### Linux
+```bash
+ip addr
+```
+
+### Opening the site
+First, run 
+```python
+python app.py
+```
+
+There are 3 ways
+#### 1. using local IP (Only for server pc)
+in the browser, type
+```
+http://127.0.0.1:8000
+```
+
+#### 2. using the IP you just found
+in the browser, type
+```
+http://YOUR_IP:8000
+```
+So for example, mine would be
+```
+http://192.168.1.114:8000
+```
+
+#### 3. Double cliking the HTML file
+In your directory, double click the demo_app.html file
+A window pops up
+type in your IPv4 address
+
+### Debugging
+```bash
+PING YOUR_SERVER_IP
+```
+Try to see if you get replies from the network connection
+
+Another way to debug is via f12 menu in the browser, go to network tab and try to catch your IP there
+
 ## Running Tests
 
 `test_db.py` provides two modes:
