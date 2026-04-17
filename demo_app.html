@@ -90,26 +90,133 @@
 
     .post-image-grid {
       display: grid;
-      gap: 0.9rem;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.3rem;
+      margin-top: 1rem;
+    }
+
+    .post-image-grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      max-width: 10.8rem;
+    }
+
+    .post-image-grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      max-width: 16.6rem;
+    }
+
+    .post-image-single {
+      margin-top: 1rem;
+      max-width: min(100%, 18rem);
     }
 
     .post-image-frame {
+      position: relative;
       overflow: hidden;
-      border-radius: 1.4rem;
-      background: rgba(248, 250, 252, 0.92);
-      border: 1px solid rgba(226, 232, 240, 0.9);
-      padding: 0.4rem;
+      border-radius: 0.85rem;
+      background: rgba(241, 245, 249, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.75);
+      padding: 0;
+      aspect-ratio: 1 / 1;
+      cursor: zoom-in;
     }
 
     .post-image-frame img {
       display: block;
       width: 100%;
-      height: auto;
-      max-height: 32rem;
-      object-fit: contain;
-      border-radius: 1.1rem;
+      height: 100%;
+      object-fit: cover;
+      border-radius: inherit;
       background: #fff;
+    }
+
+    .post-image-single .post-image-frame {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      aspect-ratio: auto;
+      border-radius: 1rem;
+      background: transparent;
+      border: 0;
+    }
+
+    .post-image-single .post-image-frame img {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      height: auto;
+      max-height: 22rem;
+      object-fit: contain;
+      border-radius: inherit;
+      background: rgba(241, 245, 249, 0.75);
+    }
+
+    @media (min-width: 640px) {
+      .post-image-single {
+        max-width: min(100%, 22rem);
+      }
+
+      .post-image-single .post-image-frame img {
+        max-height: 24rem;
+      }
+    }
+
+    .post-image-frame:focus-visible {
+      outline: 3px solid rgba(200, 90, 27, 0.35);
+      outline-offset: 2px;
+    }
+
+    .image-preview-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(8px);
+    }
+
+    .image-preview-backdrop.hidden-view {
+      display: none;
+    }
+
+    .image-preview-dialog {
+      position: relative;
+      width: min(92vw, 72rem);
+      max-height: 92vh;
+      border-radius: 1.8rem;
+      padding: 1rem;
+      background: rgba(255, 250, 244, 0.96);
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.35);
+    }
+
+    .image-preview-dialog img {
+      display: block;
+      width: 100%;
+      max-height: calc(92vh - 5rem);
+      object-fit: contain;
+      border-radius: 1.2rem;
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    .image-preview-close {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    body.preview-open {
+      overflow: hidden;
     }
 
     .comment-delete-button {
@@ -203,6 +310,7 @@
           <div id="post-feedback" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">A post created by the current user will appear in the feed immediately.</div>
           <textarea id="post-content" class="mt-5 h-40 w-full rounded-[1.6rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Write something here. You can post text only or attach an image."></textarea>
           <textarea id="post-images" class="mt-4 h-28 w-full rounded-[1.4rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Image URLs, optional. Enter one URL per line or separate with commas."></textarea>
+          <p class="mt-2 text-sm text-slate-500">You can upload at most 9 images.</p>
           <div class="mt-5 flex justify-end">
             <button id="create-post-button" class="rounded-[1.4rem] bg-gradient-to-r from-orange-600 to-orange-400 px-6 py-4 text-base font-bold text-white transition hover:opacity-90">Publish Post</button>
           </div>
@@ -249,11 +357,19 @@
     </div>
   </main>
 
+  <div id="image-preview-modal" class="image-preview-backdrop hidden-view" aria-hidden="true">
+    <div class="image-preview-dialog">
+      <button id="image-preview-close" type="button" class="image-preview-close" aria-label="Close image preview">×</button>
+      <img id="image-preview-target" src="" alt="Full size preview">
+    </div>
+  </div>
+
   <script>
     // Auto-detect API base URL (works when served from server or opened locally)
     const API_BASE = "http://127.0.0.1:8000";
     const SESSION_STORAGE_KEY = "hkugram-active-user";
     const LOGIN_PAGE = "./demo_index.html";
+    const MAX_POST_IMAGES = 9;
 
     const STATE = {
       currentUser: "",
@@ -505,29 +621,84 @@
       return String(value || "")
         .split(/[\n,]/)
         .map((item) => item.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .slice(0, MAX_POST_IMAGES);
+    }
+
+    function countImageUrls(value) {
+      return String(value || "")
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean).length;
     }
 
     function getPostImages(post) {
       if (Array.isArray(post.image_urls) && post.image_urls.length) {
-        return post.image_urls;
+        return post.image_urls.filter(Boolean).slice(0, MAX_POST_IMAGES);
       }
-      return post.image_url ? [post.image_url] : [];
+      return post.image_url ? [post.image_url].slice(0, MAX_POST_IMAGES) : [];
     }
 
-    function renderPostImages(post, compact = false) {
+    function getImageGridColumns(imageCount) {
+      if (imageCount <= 1) {
+        return 1;
+      }
+      if (imageCount === 2 || imageCount === 4) {
+        return 2;
+      }
+      return 3;
+    }
+
+    function openImagePreview(imageUrl) {
+      const modal = $("image-preview-modal");
+      const image = $("image-preview-target");
+      image.src = imageUrl;
+      modal.classList.remove("hidden-view");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("preview-open");
+    }
+
+    function closeImagePreview() {
+      const modal = $("image-preview-modal");
+      const image = $("image-preview-target");
+      image.src = "";
+      modal.classList.add("hidden-view");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("preview-open");
+    }
+
+    function bindPreviewTriggers(container) {
+      container.querySelectorAll("[data-preview-image]").forEach((button) => {
+        button.addEventListener("click", () => {
+          openImagePreview(button.dataset.previewImage);
+        });
+      });
+    }
+
+    function renderPostImages(post) {
       const imageUrls = getPostImages(post);
       if (!imageUrls.length) {
         return "";
       }
 
-      const gridClass = compact ? "mt-4 post-image-grid" : "mt-4 post-image-grid";
+      if (imageUrls.length === 1) {
+        const imageUrl = imageUrls[0];
+        return `
+          <div class="post-image-single">
+            <button type="button" class="post-image-frame" data-preview-image="${escapeHtml(imageUrl)}" aria-label="Preview image 1">
+              <img src="${escapeHtml(imageUrl)}" alt="post image 1" loading="lazy">
+            </button>
+          </div>
+        `;
+      }
+
+      const gridClass = `post-image-grid cols-${getImageGridColumns(imageUrls.length)}`;
       return `
         <div class="${gridClass}">
           ${imageUrls.map((imageUrl, index) => `
-            <div class="post-image-frame">
+            <button type="button" class="post-image-frame" data-preview-image="${escapeHtml(imageUrl)}" aria-label="Preview image ${index + 1}">
               <img src="${escapeHtml(imageUrl)}" alt="post image ${index + 1}" loading="lazy">
-            </div>
+            </button>
           `).join("")}
         </div>
       `;
@@ -563,6 +734,7 @@
       `;
       card.querySelector("[data-like-id]").addEventListener("click", () => toggleLike(post.id));
       card.querySelector("[data-comment-id]").addEventListener("click", () => submitComment(post.id));
+      bindPreviewTriggers(card);
       return card;
     }
 
@@ -599,7 +771,13 @@
 
     async function createPost() {
       const content = $("post-content").value.trim();
-      const imageUrls = parseImageUrls($("post-images").value);
+      const rawImageValue = $("post-images").value;
+      const imageCount = countImageUrls(rawImageValue);
+      const imageUrls = parseImageUrls(rawImageValue);
+      if (imageCount > MAX_POST_IMAGES) {
+        setViewMessage("post-feedback", `You can upload at most ${MAX_POST_IMAGES} images.`, "error");
+        return;
+      }
       if (!content && !imageUrls.length) {
         setViewMessage("post-feedback", "Content and image cannot both be empty.", "error");
         return;
@@ -660,9 +838,10 @@
             ${isEditing
               ? `<textarea data-edit-content="${post.id}" class="mt-4 h-36 w-full rounded-[1.3rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Write updated content">${escapeHtml(editState.content)}</textarea>
                 <textarea data-edit-images="${post.id}" class="mt-4 h-28 w-full rounded-[1.2rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Image URLs, one per line or comma separated">${escapeHtml(editState.imageUrlsText)}</textarea>
+                <div class="mt-2 text-xs text-slate-500">You can upload at most 9 images.</div>
                  <div class="mt-3 text-xs text-slate-500">Saving will overwrite the original post content.</div>`
               : `<p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">${escapeHtml(post.text_content || "") || "<span class=\"text-slate-400\">Image-only post</span>"}</p>
-                ${renderPostImages(post, true)}`}
+                ${renderPostImages(post)}`}
             <div class="mt-4 text-sm text-slate-500">${Number(post.like_count || 0)} likes</div>
           `;
           if (isEditing) {
@@ -680,6 +859,7 @@
             card.querySelector("[data-profile-delete]").addEventListener("click", () => {
               deletePost(post.id);
             });
+            bindPreviewTriggers(card);
           }
           container.appendChild(card);
         });
@@ -695,7 +875,12 @@
       }
 
       const content = editState.content.trim();
+      const imageCount = countImageUrls(editState.imageUrlsText);
       const imageUrls = parseImageUrls(editState.imageUrlsText);
+      if (imageCount > MAX_POST_IMAGES) {
+        alert(`You can upload at most ${MAX_POST_IMAGES} images.`);
+        return;
+      }
       if (!content && !imageUrls.length) {
         alert("Content and image cannot both be empty.");
         return;
@@ -985,6 +1170,12 @@
 
     function bindEvents() {
       $("logout-button").addEventListener("click", logout);
+      $("image-preview-close").addEventListener("click", closeImagePreview);
+      $("image-preview-modal").addEventListener("click", (event) => {
+        if (event.target.id === "image-preview-modal") {
+          closeImagePreview();
+        }
+      });
       document.querySelectorAll(".nav-button").forEach((button) => {
         button.addEventListener("click", () => switchView(button.dataset.view));
       });
@@ -1015,6 +1206,11 @@
         if (event.key === "Enter") {
           event.preventDefault();
           sendChat();
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !$("image-preview-modal").classList.contains("hidden-view")) {
+          closeImagePreview();
         }
       });
     }

@@ -28,6 +28,7 @@ from vanna.integrations.local.agent_memory import DemoAgentMemory
 # ===================== 全局配置 =====================
 # 数据库文件路径
 DB_PATH = database_module.DB_PATH
+MAX_POST_IMAGES = 9
 
 app = FastAPI(title="HKUgram - Group8 最终完美版")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -293,7 +294,7 @@ def normalize_image_urls(image_url: Optional[str], image_urls: Optional[list[str
         if cleaned_single_url and cleaned_single_url not in normalized_urls:
             normalized_urls.insert(0, cleaned_single_url)
 
-    return normalized_urls
+    return normalized_urls[:MAX_POST_IMAGES]
 
 
 def parse_image_urls(raw_image_urls: Optional[str], raw_image_url: Optional[str]) -> list[str]:
