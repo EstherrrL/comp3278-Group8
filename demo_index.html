@@ -140,12 +140,7 @@
 
   <script>
     // Auto-detect API base URL (works when served from server or opened locally)
-    const API_BASE = (() => {
-      if (window.location.protocol !== 'file:') {
-        return window.location.origin;
-      }  
-      return 'http://192.168.1.114:8000';
-    })();
+    const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
     const USERS_STORAGE_KEY = "hkugram-known-users";
     const SESSION_STORAGE_KEY = "hkugram-active-user";
     const APP_PAGE = "./demo_app.html";
