@@ -178,6 +178,34 @@
         return `${window.location.protocol}//${window.location.hostname}:8000`;
     }
 }
+    const API_BASE = getApiBase();
+console.log('🔗 API_BASE configured as:', API_BASE);
+
+// Optional: Add a settings button to change API_BASE later
+function showApiSettings() {
+    const newUrl = prompt(
+        'Change Backend Server URL\n\nCurrent: ' + API_BASE + '\n\nEnter new URL:',
+        API_BASE
+    );
+    if (newUrl && newUrl !== API_BASE) {
+        localStorage.setItem('hkugram_api_base', newUrl);
+        alert('Settings saved. Please refresh the page.');
+        location.reload();
+    }
+}
+
+// Add settings link to header (optional)
+window.addEventListener('DOMContentLoaded', () => {
+    const header = document.querySelector('header .flex');
+    if (header && !document.getElementById('api-settings-btn')) {
+        const settingsBtn = document.createElement('button');
+        settingsBtn.id = 'api-settings-btn';
+        settingsBtn.textContent = '⚙️ Server';
+        settingsBtn.className = 'rounded-full border border-orange-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-orange-400';
+        settingsBtn.onclick = showApiSettings;
+        header.appendChild(settingsBtn);
+    }
+});
     const USERS_STORAGE_KEY = "hkugram-known-users";
     const SESSION_STORAGE_KEY = "hkugram-active-user";
     const APP_PAGE = "./demo_app.html";
