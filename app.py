@@ -372,7 +372,7 @@ def update_post(post_id: int, req: UpdatePost):
             raise HTTPException(403, "You can only edit your own posts")
 
         conn.execute(
-            "UPDATE posts SET content=?, image_url=?, image_urls=? WHERE post_id=?",
+            "UPDATE posts SET content=?, image_url=?, image_urls=?, updated_at=CURRENT_TIMESTAMP WHERE post_id=?",
             (
                 req.content,
                 image_urls[0] if image_urls else None,

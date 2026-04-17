@@ -13,54 +13,63 @@ DB_PATH = str(Path(os.getenv("HKUGRAM_DB_PATH", DEFAULT_DB_PATH)).expanduser().r
 
 
 SCHEMA_SQL = """
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
+-- Users table
 CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    email TEXT UNIQUE,
-    bio TEXT,
-    profile_pic TEXT,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    user_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT    NOT NULL UNIQUE,
+    email       TEXT    UNIQUE,               -- optional
+    bio         TEXT,                         -- short personal bio
+    profile_pic TEXT,                         -- avatar URL
+    timestamp   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Posts table
 CREATE TABLE IF NOT EXISTS posts (
-    post_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    content TEXT,
-    image_url TEXT,
-    image_urls TEXT,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    likes_count INTEGER NOT NULL DEFAULT 0,
+    post_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    content     TEXT,
+    image_url   TEXT,                         -- first image URL (legacy / fallback)
+    image_urls  TEXT,                         -- JSON array of image URLs
+    timestamp   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TEXT,                         -- set on PUT /posts/{post_id}
+    likes_count INTEGER NOT NULL DEFAULT 0,   -- denormalised counter for fast feed sort
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
+-- Likes table (many-to-many; toggle via DELETE / INSERT OR IGNORE in app.py)
 CREATE TABLE IF NOT EXISTS likes (
-    user_id INTEGER NOT NULL,
-    post_id INTEGER NOT NULL,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id   INTEGER NOT NULL,
+    post_id   INTEGER NOT NULL,
+    timestamp TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, post_id),
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
 );
 
+-- Comments table (parent_comment_id = NULL → top-level; non-NULL → threaded reply)
 CREATE TABLE IF NOT EXISTS comments (
-    comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    post_id INTEGER NOT NULL,
-    parent_comment_id INTEGER,
-    content TEXT NOT NULL,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+    comment_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    post_id           INTEGER NOT NULL,
+    parent_comment_id INTEGER,               -- self-referencing FK for replies
+    content           TEXT    NOT NULL,
+    timestamp         TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)           REFERENCES users(user_id)       ON DELETE CASCADE,
+    FOREIGN KEY (post_id)           REFERENCES posts(post_id)       ON DELETE CASCADE,
     FOREIGN KEY (parent_comment_id) REFERENCES comments(comment_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
-CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp DESC);
+-- Indexes for frequently used queries
+CREATE INDEX IF NOT EXISTS idx_users_username    ON users(username);
+CREATE INDEX IF NOT EXISTS idx_posts_user_id     ON posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_timestamp   ON posts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_likes_count ON posts(likes_count DESC);
-CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
-CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
-CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_comment_id);
+CREATE INDEX IF NOT EXISTS idx_likes_post_id     ON likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id  ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_parent   ON comments(parent_comment_id);
 """
 
 
@@ -106,15 +115,16 @@ def _migrate_post_images(conn: sqlite3.Connection) -> None:
 
 
 def init_db() -> None:
-    conn = get_conn()
+    conn = get_conn()   # use get_conn() so WAL / FK PRAGMAs are already set
     try:
         conn.executescript(SCHEMA_SQL)
-        _add_column_if_missing(conn, "users", "email", "email TEXT UNIQUE")
-        _add_column_if_missing(conn, "users", "bio", "bio TEXT")
-        _add_column_if_missing(conn, "users", "profile_pic", "profile_pic TEXT")
-        _add_column_if_missing(conn, "users", "timestamp", "timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
-        _add_column_if_missing(conn, "posts", "likes_count", "likes_count INTEGER NOT NULL DEFAULT 0")
-        _add_column_if_missing(conn, "posts", "image_urls", "image_urls TEXT")
+        _add_column_if_missing(conn, "users",    "email",             "email TEXT UNIQUE")
+        _add_column_if_missing(conn, "users",    "bio",               "bio TEXT")
+        _add_column_if_missing(conn, "users",    "profile_pic",       "profile_pic TEXT")
+        _add_column_if_missing(conn, "users",    "timestamp",         "timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        _add_column_if_missing(conn, "posts",    "likes_count",       "likes_count INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "posts",    "image_urls",        "image_urls TEXT")
+        _add_column_if_missing(conn, "posts",    "updated_at",        "updated_at TEXT")
         _add_column_if_missing(conn, "comments", "parent_comment_id", "parent_comment_id INTEGER")
         _migrate_post_images(conn)
         conn.commit()
