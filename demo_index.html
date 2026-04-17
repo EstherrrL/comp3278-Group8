@@ -93,12 +93,15 @@
       </div>
 
       <div class="glass rounded-[2.5rem] p-6 shadow-card sm:p-8">
-        <div class="flex items-center justify-between gap-3">
-          <div>
+        <div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div class="min-w-0 flex-1">
             <p class="text-sm font-extrabold uppercase tracking-[0.16em] text-ember">Entry</p>
-            <h2 class="mt-2 text-3xl font-extrabold">Welcome Back</h2>
+            <h2 class="mt-2 whitespace-nowrap text-3xl font-extrabold sm:text-[2.65rem] sm:leading-none">Welcome Back</h2>
           </div>
-          <button id="check-backend-button" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Check Backend</button>
+          <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 self-end sm:-mt-1 sm:self-start">
+            <button id="api-settings-btn" class="rounded-full border border-orange-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-orange-400 hover:text-ember">⚙️ Server</button>
+            <button id="check-backend-button" class="rounded-full border border-orange-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Check Backend</button>
+          </div>
         </div>
 
         <div id="auth-status" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">Make sure the backend is running first.</div>
@@ -194,18 +197,6 @@ function showApiSettings() {
     }
 }
 
-// Add settings link to header (optional)
-window.addEventListener('DOMContentLoaded', () => {
-    const header = document.querySelector('header .flex');
-    if (header && !document.getElementById('api-settings-btn')) {
-        const settingsBtn = document.createElement('button');
-        settingsBtn.id = 'api-settings-btn';
-        settingsBtn.textContent = '⚙️ Server';
-        settingsBtn.className = 'rounded-full border border-orange-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-orange-400';
-        settingsBtn.onclick = showApiSettings;
-        header.appendChild(settingsBtn);
-    }
-});
     const USERS_STORAGE_KEY = "hkugram-known-users";
     const SESSION_STORAGE_KEY = "hkugram-active-user";
     const APP_PAGE = "./demo_app.html";
@@ -367,6 +358,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     function bindEvents() {
+      $("api-settings-btn").addEventListener("click", showApiSettings);
       $("check-backend-button").addEventListener("click", checkBackend);
       $("refresh-login-users").addEventListener("click", checkBackend);
       document.querySelectorAll(".auth-tab").forEach((button) => {
