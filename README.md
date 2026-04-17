@@ -375,8 +375,10 @@ python app.py
 |---|---|---|
 | `CreateUser` | `username: str` | `POST /users` |
 | `CreatePost` | `username`, `content` (opt), `image_url` (opt) | `POST /posts` |
+| `UpdatePost` | `username`, `content` (opt), `image_url` (opt) | `PUT /posts/{post_id}` |
 | `ToggleLike` | `username`, `post_id: int` | `POST /likes/toggle` |
 | `CreateComment` | `username`, `post_id`, `content`, `parent_comment_id` (opt) | `POST /comments` |
+| `DeletePost` | `username` | `DELETE /posts/{post_id}` |
 
 ---
 
@@ -411,9 +413,47 @@ Publish a new post (text and/or image) on behalf of an existing user.
 ```
 **Response**
 ```json
-{ "message": "帖子发布成功" }
+{ "message": "Post published successfully" }
 ```
 **Error** — `404` if the username does not exist.
+
+---
+
+#### `PUT /posts/{post_id}`
+Overwrite the content and/or image URL of an existing post. Only the original author
+is allowed to edit the post.
+
+**Request body**
+```json
+{
+  "username": "alice",
+  "content": "Edited text",
+  "image_url": "https://example.com/new-photo.jpg"
+}
+```
+**Response**
+```json
+{ "message": "Post updated successfully" }
+```
+**Error** — `400` if both `content` and `image_url` are empty.
+**Error** — `403` if the user tries to edit someone else's post.
+**Error** — `404` if the user or post does not exist.
+
+---
+
+#### `DELETE /posts/{post_id}`
+Delete an existing post. Only the original author is allowed to delete it.
+
+**Request body**
+```json
+{ "username": "alice" }
+```
+**Response**
+```json
+{ "message": "Post deleted successfully" }
+```
+**Error** — `403` if the user tries to delete someone else's post.
+**Error** — `404` if the user or post does not exist.
 
 ---
 
@@ -427,7 +467,7 @@ Updates `posts.likes_count` atomically in the same transaction.
 ```
 **Response**
 ```json
-{ "message": "点赞成功" }   // or "取消点赞"
+{ "message": "Like toggled successfully" }
 ```
 **Error** — `404` if the username does not exist.
 
@@ -449,7 +489,7 @@ omit it (or set it to `null`) for a top-level comment.
 ```
 **Response**
 ```json
-{ "message": "评论成功" }
+{ "message": "Comment added successfully" }
 ```
 **Error** — `404` if the username does not exist.
 
@@ -466,7 +506,7 @@ if the removed comment is a parent comment, because the database foreign key use
 ```
 **Response**
 ```json
-{ "message": "评论已删除" }
+{ "message": "Comment deleted successfully" }
 ```
 **Error** — `404` if the username or comment does not exist.
 **Error** — `403` if the user tries to delete someone else's comment.

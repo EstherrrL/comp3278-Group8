@@ -186,6 +186,12 @@ class CreatePost(BaseModel):
     content: Optional[str] = None
     image_url: Optional[str] = None
 
+
+class UpdatePost(BaseModel):
+    username: str
+    content: Optional[str] = None
+    image_url: Optional[str] = None
+
 #点赞/取消点赞请求格式
 class ToggleLike(BaseModel):
     username: str
@@ -199,6 +205,10 @@ class CreateComment(BaseModel):
     parent_comment_id: Optional[int] = None
 
 class DeleteComment(BaseModel):
+    username: str
+
+
+class DeletePost(BaseModel):
     username: str
 
 # ===================== DB Helper =====================
@@ -226,6 +236,11 @@ def get_user_id(username: str):
     user = conn.execute("SELECT user_id FROM users WHERE username=?", (username,)).fetchone()
     conn.close()
     return user["user_id"] if user else None
+
+
+def get_post_author_id(conn: sqlite3.Connection, post_id: int):
+    post = conn.execute("SELECT user_id FROM posts WHERE post_id=?", (post_id,)).fetchone()
+    return post["user_id"] if post else None
 
 def get_liked_posts_by_user(username: str):
     """Get set of post IDs liked by a user"""
@@ -271,6 +286,56 @@ def create_post(req: CreatePost):
         )
         conn.commit()
         return {"message": "Post published successfully"}
+    finally:
+        conn.close()
+
+
+@app.put("/posts/{post_id}")
+def update_post(post_id: int, req: UpdatePost):
+    if not req.content and not req.image_url:
+        raise HTTPException(400, "Content and image cannot both be empty")
+
+    conn = get_conn()
+    try:
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        post_author_id = get_post_author_id(conn, post_id)
+        if post_author_id is None:
+            raise HTTPException(404, "Post not found")
+
+        if post_author_id != user["user_id"]:
+            raise HTTPException(403, "You can only edit your own posts")
+
+        conn.execute(
+            "UPDATE posts SET content=?, image_url=? WHERE post_id=?",
+            (req.content, req.image_url, post_id),
+        )
+        conn.commit()
+        return {"message": "Post updated successfully"}
+    finally:
+        conn.close()
+
+
+@app.delete("/posts/{post_id}")
+def delete_post(post_id: int, req: DeletePost):
+    conn = get_conn()
+    try:
+        user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        post_author_id = get_post_author_id(conn, post_id)
+        if post_author_id is None:
+            raise HTTPException(404, "Post not found")
+
+        if post_author_id != user["user_id"]:
+            raise HTTPException(403, "You can only delete your own posts")
+
+        conn.execute("DELETE FROM posts WHERE post_id=?", (post_id,))
+        conn.commit()
+        return {"message": "Post deleted successfully"}
     finally:
         conn.close()
 
