@@ -31,7 +31,27 @@ DB_PATH = database_module.DB_PATH
 
 app = FastAPI(title="HKUgram - Group8 最终完美版")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+#for getting server on the local network--
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
+# Get the directory where app.py is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Serve static files (HTML, CSS, JS)
+app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+
+@app.get("/")
+async def serve_login():
+    """Serve the login page"""
+    return FileResponse(os.path.join(BASE_DIR, "demo_index.html"))
+
+@app.get("/app")
+async def serve_app():
+    """Serve the main app page"""
+    return FileResponse(os.path.join(BASE_DIR, "demo_app.html"))
+#--
 class SimpleUserResolver(UserResolver):
     async def resolve_user(self, request_context: RequestContext) -> User:
         return User(id="student", email="student@hku.hk", group_memberships=["user"])
