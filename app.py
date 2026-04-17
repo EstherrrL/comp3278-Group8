@@ -6,6 +6,7 @@ HKUgram Group8 最终完美版 - 完整功能版本
 """
 #===================== 导入依赖库 =====================
 import os
+import json
 import sqlite3
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -185,12 +186,14 @@ class CreatePost(BaseModel):
     username: str
     content: Optional[str] = None
     image_url: Optional[str] = None
+    image_urls: Optional[list[str]] = None
 
 
 class UpdatePost(BaseModel):
     username: str
     content: Optional[str] = None
     image_url: Optional[str] = None
+    image_urls: Optional[list[str]] = None
 
 #点赞/取消点赞请求格式
 class ToggleLike(BaseModel):
@@ -242,6 +245,56 @@ def get_post_author_id(conn: sqlite3.Connection, post_id: int):
     post = conn.execute("SELECT user_id FROM posts WHERE post_id=?", (post_id,)).fetchone()
     return post["user_id"] if post else None
 
+
+def normalize_image_urls(image_url: Optional[str], image_urls: Optional[list[str]]) -> list[str]:
+    normalized_urls: list[str] = []
+
+    for candidate in image_urls or []:
+        if candidate is None:
+            continue
+        cleaned = candidate.strip()
+        if cleaned:
+            normalized_urls.append(cleaned)
+
+    if image_url:
+        cleaned_single_url = image_url.strip()
+        if cleaned_single_url and cleaned_single_url not in normalized_urls:
+            normalized_urls.insert(0, cleaned_single_url)
+
+    return normalized_urls
+
+
+def parse_image_urls(raw_image_urls: Optional[str], raw_image_url: Optional[str]) -> list[str]:
+    image_urls: list[str] = []
+
+    if raw_image_urls:
+        try:
+            decoded = json.loads(raw_image_urls)
+            if isinstance(decoded, list):
+                image_urls = [str(item).strip() for item in decoded if str(item).strip()]
+        except json.JSONDecodeError:
+            image_urls = []
+
+    if not image_urls and raw_image_url:
+        fallback_url = raw_image_url.strip()
+        if fallback_url:
+            image_urls = [fallback_url]
+
+    return image_urls
+
+
+def serialize_post_row(row: sqlite3.Row, include_username: bool = True) -> dict:
+    post_dict = dict(row)
+    image_urls = parse_image_urls(post_dict.get("image_urls"), post_dict.get("image_url"))
+    post_dict["image_urls"] = image_urls
+    post_dict["image_url"] = image_urls[0] if image_urls else None
+    post_dict["created_at"] = utc_to_beijing(post_dict["created_at"])
+
+    if not include_username:
+        post_dict.pop("username", None)
+
+    return post_dict
+
 def get_liked_posts_by_user(username: str):
     """Get set of post IDs liked by a user"""
     conn = get_conn()
@@ -275,14 +328,23 @@ def create_user(req: CreateUser):
 
 @app.post("/posts")
 def create_post(req: CreatePost):
+    image_urls = normalize_image_urls(req.image_url, req.image_urls)
+    if not req.content and not image_urls:
+        raise HTTPException(400, "Content and image cannot both be empty")
+
     conn = get_conn()
     try:
         user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.username,)).fetchone()
         if not user:
             raise HTTPException(404, "User not found")
         conn.execute(
-            "INSERT INTO posts (user_id, content, image_url) VALUES (?,?,?)",
-            (user["user_id"], req.content, req.image_url),
+            "INSERT INTO posts (user_id, content, image_url, image_urls) VALUES (?,?,?,?)",
+            (
+                user["user_id"],
+                req.content,
+                image_urls[0] if image_urls else None,
+                json.dumps(image_urls) if image_urls else None,
+            ),
         )
         conn.commit()
         return {"message": "Post published successfully"}
@@ -292,7 +354,8 @@ def create_post(req: CreatePost):
 
 @app.put("/posts/{post_id}")
 def update_post(post_id: int, req: UpdatePost):
-    if not req.content and not req.image_url:
+    image_urls = normalize_image_urls(req.image_url, req.image_urls)
+    if not req.content and not image_urls:
         raise HTTPException(400, "Content and image cannot both be empty")
 
     conn = get_conn()
@@ -309,8 +372,13 @@ def update_post(post_id: int, req: UpdatePost):
             raise HTTPException(403, "You can only edit your own posts")
 
         conn.execute(
-            "UPDATE posts SET content=?, image_url=? WHERE post_id=?",
-            (req.content, req.image_url, post_id),
+            "UPDATE posts SET content=?, image_url=?, image_urls=? WHERE post_id=?",
+            (
+                req.content,
+                image_urls[0] if image_urls else None,
+                json.dumps(image_urls) if image_urls else None,
+                post_id,
+            ),
         )
         conn.commit()
         return {"message": "Post updated successfully"}
@@ -434,7 +502,7 @@ def get_feed(sort: str = "time", limit: int = 50, search: Optional[str] = None, 
     conn = get_conn()
     query = f"""
         SELECT p.post_id as id, u.username, p.content as text_content, 
-               p.image_url, p.timestamp as created_at, p.likes_count as like_count
+               p.image_url, p.image_urls, p.timestamp as created_at, p.likes_count as like_count
         FROM posts p JOIN users u ON p.user_id = u.user_id
     """
     params = []
@@ -450,8 +518,7 @@ def get_feed(sort: str = "time", limit: int = 50, search: Optional[str] = None, 
     
     result = []
     for row in rows:
-        post_dict = dict(row)
-        post_dict["created_at"] = utc_to_beijing(post_dict["created_at"])
+        post_dict = serialize_post_row(row)
         post_dict["liked_by_viewer"] = post_dict["id"] in liked_posts
         result.append(post_dict)
     
@@ -466,8 +533,8 @@ def get_user_posts(username: str, viewer: Optional[str] = None):
         raise HTTPException(404, "User not found")
     
     rows = conn.execute("""
-        SELECT p.post_id as id, p.content as text_content, 
-               p.image_url, p.timestamp as created_at, p.likes_count as like_count
+         SELECT p.post_id as id, p.content as text_content,
+             p.image_url, p.image_urls, p.timestamp as created_at, p.likes_count as like_count
         FROM posts p
         WHERE p.user_id = ?
         ORDER BY p.timestamp DESC
@@ -478,9 +545,7 @@ def get_user_posts(username: str, viewer: Optional[str] = None):
     
     result = []
     for row in rows:
-        post_dict = dict(row)
-
-        post_dict["created_at"] = utc_to_beijing(post_dict["created_at"])
+        post_dict = serialize_post_row(row, include_username=False)
         post_dict["liked_by_viewer"] = post_dict["id"] in liked_posts
         result.append(post_dict)
     
@@ -536,7 +601,7 @@ def get_top_posts(limit: int = 10):
     conn = get_conn()
     rows = conn.execute("""
         SELECT p.post_id as id, u.username, p.content as text_content,
-               p.image_url, p.timestamp as created_at, p.likes_count as like_count
+               p.image_url, p.image_urls, p.timestamp as created_at, p.likes_count as like_count
         FROM posts p JOIN users u ON p.user_id = u.user_id
         ORDER BY p.likes_count DESC, p.timestamp DESC
         LIMIT ?
@@ -545,8 +610,7 @@ def get_top_posts(limit: int = 10):
     # 转成北京/香港时间
     result = []
     for row in rows:
-        row_dict = dict(row)
-        row_dict["created_at"] = utc_to_beijing(row_dict["created_at"])
+        row_dict = serialize_post_row(row)
         result.append(row_dict)
     return result
 

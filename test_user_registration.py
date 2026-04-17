@@ -55,7 +55,10 @@ class PostOwnershipTests(unittest.TestCase):
             social_app.CreatePost(
                 username="alice",
                 content="original content",
-                image_url="https://example.com/original.jpg",
+                image_urls=[
+                    "https://example.com/original-1.jpg",
+                    "https://example.com/original-2.jpg",
+                ],
             )
         )
 
@@ -69,7 +72,11 @@ class PostOwnershipTests(unittest.TestCase):
             social_app.UpdatePost(
                 username="alice",
                 content="updated content",
-                image_url="https://example.com/updated.jpg",
+                image_urls=[
+                    "https://example.com/updated-1.jpg",
+                    "https://example.com/updated-2.jpg",
+                    "https://example.com/updated-3.jpg",
+                ],
             ),
         )
 
@@ -77,7 +84,15 @@ class PostOwnershipTests(unittest.TestCase):
 
         posts = social_app.get_user_posts("alice")
         self.assertEqual(posts[0]["text_content"], "updated content")
-        self.assertEqual(posts[0]["image_url"], "https://example.com/updated.jpg")
+        self.assertEqual(posts[0]["image_url"], "https://example.com/updated-1.jpg")
+        self.assertEqual(
+            posts[0]["image_urls"],
+            [
+                "https://example.com/updated-1.jpg",
+                "https://example.com/updated-2.jpg",
+                "https://example.com/updated-3.jpg",
+            ],
+        )
 
     def test_non_author_cannot_update_someone_elses_post(self):
         with self.assertRaises(HTTPException) as context:

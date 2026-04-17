@@ -374,8 +374,8 @@ python app.py
 | Model | Fields | Used by |
 |---|---|---|
 | `CreateUser` | `username: str` | `POST /users` |
-| `CreatePost` | `username`, `content` (opt), `image_url` (opt) | `POST /posts` |
-| `UpdatePost` | `username`, `content` (opt), `image_url` (opt) | `PUT /posts/{post_id}` |
+| `CreatePost` | `username`, `content` (opt), `image_url` (opt), `image_urls` (opt) | `POST /posts` |
+| `UpdatePost` | `username`, `content` (opt), `image_url` (opt), `image_urls` (opt) | `PUT /posts/{post_id}` |
 | `ToggleLike` | `username`, `post_id: int` | `POST /likes/toggle` |
 | `CreateComment` | `username`, `post_id`, `content`, `parent_comment_id` (opt) | `POST /comments` |
 | `DeletePost` | `username` | `DELETE /posts/{post_id}` |
@@ -401,20 +401,25 @@ Create a new user. Usernames must be unique.
 ---
 
 #### `POST /posts`
-Publish a new post (text and/or image) on behalf of an existing user.
+Publish a new post (text and/or image) on behalf of an existing user. A post can
+contain multiple image URLs by passing `image_urls`.
 
 **Request body**
 ```json
 {
   "username": "alice",
   "content": "Hello HKUgram!",
-  "image_url": "https://example.com/photo.jpg"
+  "image_urls": [
+    "https://example.com/photo-1.jpg",
+    "https://example.com/photo-2.jpg"
+  ]
 }
 ```
 **Response**
 ```json
 { "message": "Post published successfully" }
 ```
+**Notes** — `image_url` is still accepted for backward compatibility and will be treated as the first image.
 **Error** — `404` if the username does not exist.
 
 ---
@@ -428,14 +433,18 @@ is allowed to edit the post.
 {
   "username": "alice",
   "content": "Edited text",
-  "image_url": "https://example.com/new-photo.jpg"
+  "image_urls": [
+    "https://example.com/new-photo-1.jpg",
+    "https://example.com/new-photo-2.jpg"
+  ]
 }
 ```
 **Response**
 ```json
 { "message": "Post updated successfully" }
 ```
-**Error** — `400` if both `content` and `image_url` are empty.
+**Notes** — `image_url` is still accepted for backward compatibility and will be treated as the first image.
+**Error** — `400` if both `content` and the image list are empty.
 **Error** — `403` if the user tries to edit someone else's post.
 **Error** — `404` if the user or post does not exist.
 

@@ -88,6 +88,30 @@
       border-left: 2px solid rgba(200, 90, 27, 0.14);
     }
 
+    .post-image-grid {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .post-image-frame {
+      overflow: hidden;
+      border-radius: 1.4rem;
+      background: rgba(248, 250, 252, 0.92);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      padding: 0.4rem;
+    }
+
+    .post-image-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 32rem;
+      object-fit: contain;
+      border-radius: 1.1rem;
+      background: #fff;
+    }
+
     .comment-delete-button {
       border: 1px solid rgba(220, 38, 38, 0.18);
       background: rgba(220, 38, 38, 0.08);
@@ -178,7 +202,7 @@
           <h3 class="mt-2 text-3xl font-extrabold">Create a New Post</h3>
           <div id="post-feedback" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">A post created by the current user will appear in the feed immediately.</div>
           <textarea id="post-content" class="mt-5 h-40 w-full rounded-[1.6rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Write something here. You can post text only or attach an image."></textarea>
-          <input id="post-image" class="mt-4 w-full rounded-[1.4rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Image URL, optional">
+          <textarea id="post-images" class="mt-4 h-28 w-full rounded-[1.4rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Image URLs, optional. Enter one URL per line or separate with commas."></textarea>
           <div class="mt-5 flex justify-end">
             <button id="create-post-button" class="rounded-[1.4rem] bg-gradient-to-r from-orange-600 to-orange-400 px-6 py-4 text-base font-bold text-white transition hover:opacity-90">Publish Post</button>
           </div>
@@ -323,7 +347,7 @@
     function openProfilePostEditor(post) {
       STATE.profileEditState[post.id] = {
         content: post.text_content || "",
-        imageUrl: post.image_url || ""
+        imageUrlsText: (post.image_urls || []).join("\n")
       };
       refreshProfile();
     }
@@ -340,7 +364,7 @@
       }
 
       const contentInput = card.querySelector(`[data-edit-content="${postId}"]`);
-      const imageInput = card.querySelector(`[data-edit-image="${postId}"]`);
+      const imageInput = card.querySelector(`[data-edit-images="${postId}"]`);
 
       if (contentInput) {
         contentInput.addEventListener("input", (event) => {
@@ -350,9 +374,41 @@
 
       if (imageInput) {
         imageInput.addEventListener("input", (event) => {
-          editState.imageUrl = event.target.value;
+          editState.imageUrlsText = event.target.value;
         });
       }
+    }
+
+    function parseImageUrls(value) {
+      return String(value || "")
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function getPostImages(post) {
+      if (Array.isArray(post.image_urls) && post.image_urls.length) {
+        return post.image_urls;
+      }
+      return post.image_url ? [post.image_url] : [];
+    }
+
+    function renderPostImages(post, compact = false) {
+      const imageUrls = getPostImages(post);
+      if (!imageUrls.length) {
+        return "";
+      }
+
+      const gridClass = compact ? "mt-4 post-image-grid" : "mt-4 post-image-grid";
+      return `
+        <div class="${gridClass}">
+          ${imageUrls.map((imageUrl, index) => `
+            <div class="post-image-frame">
+              <img src="${escapeHtml(imageUrl)}" alt="post image ${index + 1}" loading="lazy">
+            </div>
+          `).join("")}
+        </div>
+      `;
     }
 
     function renderPostCard(post) {
@@ -370,7 +426,7 @@
           <div class="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-ember">Post #${post.id}</div>
         </div>
         <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">${escapeHtml(post.text_content || "") || "<span class=\"text-slate-400\">Image-only post</span>"}</p>
-        ${post.image_url ? `<img src="${escapeHtml(post.image_url)}" alt="post image" class="mt-4 max-h-[420px] w-full rounded-[1.4rem] object-cover">` : ""}
+        ${renderPostImages(post)}
         <div class="mt-5 flex flex-wrap items-center gap-3">
           <button id="like-button-${post.id}" data-like-id="${post.id}" class="rounded-full px-4 py-2 text-sm font-bold transition ${post.liked_by_viewer ? "like-button-active" : "bg-orange-50 text-ember hover:bg-orange-100"}">${post.liked_by_viewer ? "❤ Liked" : "❤ Like"}</button>
           <span id="like-count-${post.id}" class="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600">${Number(post.like_count || 0)} likes</span>
@@ -421,8 +477,8 @@
 
     async function createPost() {
       const content = $("post-content").value.trim();
-      const imageUrl = $("post-image").value.trim();
-      if (!content && !imageUrl) {
+      const imageUrls = parseImageUrls($("post-images").value);
+      if (!content && !imageUrls.length) {
         setViewMessage("post-feedback", "Content and image cannot both be empty.", "error");
         return;
       }
@@ -433,11 +489,12 @@
           body: JSON.stringify({
             username: STATE.currentUser,
             content: content || null,
-            image_url: imageUrl || null
+            image_url: imageUrls[0] || null,
+            image_urls: imageUrls.length ? imageUrls : null
           })
         });
         $("post-content").value = "";
-        $("post-image").value = "";
+        $("post-images").value = "";
         setViewMessage("post-feedback", payload.message || "帖子发布成功。", "success");
         switchView("home");
       } catch (error) {
@@ -460,7 +517,7 @@
           const isEditing = isProfilePostEditing(post.id);
           const editState = STATE.profileEditState[post.id] || {
             content: post.text_content || "",
-            imageUrl: post.image_url || ""
+            imageUrlsText: getPostImages(post).join("\n")
           };
           const card = document.createElement("article");
           card.className = "slide-up rounded-[1.6rem] bg-white p-5 ring-1 ring-orange-100";
@@ -480,10 +537,10 @@
             </div>
             ${isEditing
               ? `<textarea data-edit-content="${post.id}" class="mt-4 h-36 w-full rounded-[1.3rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Write updated content">${escapeHtml(editState.content)}</textarea>
-                 <input data-edit-image="${post.id}" class="mt-4 w-full rounded-[1.2rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Image URL, optional" value="${escapeHtml(editState.imageUrl)}">
+                <textarea data-edit-images="${post.id}" class="mt-4 h-28 w-full rounded-[1.2rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Image URLs, one per line or comma separated">${escapeHtml(editState.imageUrlsText)}</textarea>
                  <div class="mt-3 text-xs text-slate-500">Saving will overwrite the original post content.</div>`
               : `<p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">${escapeHtml(post.text_content || "") || "<span class=\"text-slate-400\">Image-only post</span>"}</p>
-                 ${post.image_url ? `<img src="${escapeHtml(post.image_url)}" alt="post image" class="mt-4 max-h-72 w-full rounded-[1.2rem] object-cover">` : ""}`}
+                ${renderPostImages(post, true)}`}
             <div class="mt-4 text-sm text-slate-500">${Number(post.like_count || 0)} likes</div>
           `;
           if (isEditing) {
@@ -516,8 +573,8 @@
       }
 
       const content = editState.content.trim();
-      const imageUrl = editState.imageUrl.trim();
-      if (!content && !imageUrl) {
+      const imageUrls = parseImageUrls(editState.imageUrlsText);
+      if (!content && !imageUrls.length) {
         alert("Content and image cannot both be empty.");
         return;
       }
@@ -529,7 +586,8 @@
           body: JSON.stringify({
             username: STATE.currentUser,
             content: content || null,
-            image_url: imageUrl || null
+            image_url: imageUrls[0] || null,
+            image_urls: imageUrls.length ? imageUrls : null
           })
         });
 
@@ -537,7 +595,8 @@
         const feedPost = getFeedPost(postId);
         if (feedPost) {
           feedPost.text_content = content || null;
-          feedPost.image_url = imageUrl || null;
+          feedPost.image_urls = imageUrls;
+          feedPost.image_url = imageUrls[0] || null;
         }
         await refreshProfile();
         if (STATE.currentView === "home") {

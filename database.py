@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS posts (
     user_id INTEGER NOT NULL,
     content TEXT,
     image_url TEXT,
+    image_urls TEXT,
     timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     likes_count INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
@@ -86,6 +88,23 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column_name: st
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
 
 
+def _migrate_post_images(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        "SELECT post_id, image_url, image_urls FROM posts"
+    ).fetchall()
+
+    for row in rows:
+        if row["image_urls"]:
+            continue
+        if not row["image_url"]:
+            continue
+
+        conn.execute(
+            "UPDATE posts SET image_urls=? WHERE post_id=?",
+            (json.dumps([row["image_url"]]), row["post_id"]),
+        )
+
+
 def init_db() -> None:
     conn = get_conn()
     try:
@@ -95,7 +114,9 @@ def init_db() -> None:
         _add_column_if_missing(conn, "users", "profile_pic", "profile_pic TEXT")
         _add_column_if_missing(conn, "users", "timestamp", "timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
         _add_column_if_missing(conn, "posts", "likes_count", "likes_count INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "posts", "image_urls", "image_urls TEXT")
         _add_column_if_missing(conn, "comments", "parent_comment_id", "parent_comment_id INTEGER")
+        _migrate_post_images(conn)
         conn.commit()
     finally:
         conn.close()
