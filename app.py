@@ -213,6 +213,10 @@ class DeleteComment(BaseModel):
 
 class DeletePost(BaseModel):
     username: str
+#修改用户名
+class UpdateUsername(BaseModel):
+    old_username: str
+    new_username: str
 
 # ===================== DB Helper =====================
 def _sync_db_path() -> None:
@@ -323,6 +327,38 @@ def create_user(req: CreateUser):
         return {"message": "User created successfully"}
     except sqlite3.IntegrityError:
         raise HTTPException(409, "Username already exists")
+    finally:
+        conn.close()
+
+@app.put("/users/{old_username}")
+def update_username(old_username: str, req: UpdateUsername):
+    """修改用户名"""
+    # 验证old_username匹配
+    if old_username != req.old_username:
+        raise HTTPException(400, "Username mismatch in URL and request body")
+    
+    conn = get_conn()
+    try:
+        # 检查旧用户名是否存在
+        old_user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.old_username,)).fetchone()
+        if not old_user:
+            raise HTTPException(404, "Old username not found")
+        
+        # 检查新用户名是否已经被使用
+        new_user = conn.execute("SELECT user_id FROM users WHERE username=?", (req.new_username,)).fetchone()
+        if new_user:
+            raise HTTPException(409, "New username already exists")
+        
+        # 更新用户名
+        conn.execute("UPDATE users SET username=? WHERE username=?", (req.new_username, req.old_username))
+        conn.commit()
+        return {"message": "Username updated successfully", "new_username": req.new_username}
+    except HTTPException:
+        # Re-raise HTTPException as-is
+        raise
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise HTTPException(500, f"Database error: {str(e)}")
     finally:
         conn.close()
 

@@ -207,7 +207,8 @@
 
     function renderLoginUsers() {
       const container = $("login-user-list");
-      const allUsers = [...new Set([...STATE.backendUsers, ...STATE.knownUsers])];
+      // Only show users that currently exist in the database
+      const allUsers = STATE.backendUsers;
       container.innerHTML = "";
       if (!allUsers.length) {
         container.innerHTML = '<div class="rounded-full border border-dashed border-orange-200 px-4 py-2 text-sm text-slate-500">No users available yet</div>';
