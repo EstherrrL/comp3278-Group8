@@ -380,7 +380,44 @@
 
   <script>
     // Auto-detect API base URL (works when served from server or opened locally)
-    const API_BASE = "http://127.0.0.1:8000";
+    function getApiBase() {
+    // Check if HTML was loaded from a web server (not file://)
+    if (window.location.protocol === 'file:') {
+        // HTML was double-clicked (local file)
+        // Try to get saved server URL from localStorage
+        const savedUrl = localStorage.getItem('hkugram_api_base');
+        if (savedUrl) {
+            console.log('Using saved API URL:', savedUrl);
+            return savedUrl;
+        }
+
+        // No saved URL - ask user for server address
+        const defaultUrl = prompt(
+            '🔧 Backend Server Configuration\n\n' +
+            'Enter the full URL of your FastAPI server:\n' +
+            '(e.g., http://192.168.1.100:8000)\n\n' +
+            'To find your server IP, run "hostname -I" on the server.',
+            'http://127.0.0.1:8000'
+        );
+
+        if (defaultUrl) {
+            localStorage.setItem('hkugram_api_base', defaultUrl);
+            return defaultUrl;
+        }
+        return 'http://127.0.0.1:8000'; // fallback
+    }
+
+    // HTML was served from a web server
+    // Check if we're on the same port as FastAPI
+    if (window.location.port === '8000') {
+        // Same port - FastAPI is serving HTML directly
+        return window.location.origin;
+    } else {
+        // Different port (e.g., HTML on port 3000, API on 8000)
+        // Use same hostname but port 8000
+        return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
+}
     const SESSION_STORAGE_KEY = "hkugram-active-user";
     const LOGIN_PAGE = "./demo_index.html";
     const MAX_POST_IMAGES = 9;
