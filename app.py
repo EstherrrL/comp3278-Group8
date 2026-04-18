@@ -563,6 +563,7 @@ def delete_comment(comment_id: int, req: DeleteComment):
 
 @app.get("/feed")
 def get_feed(
+<<<<<<< Updated upstream
     sort: str = "time",
     order: str = "desc",
     limit: int = 50,
@@ -577,6 +578,21 @@ def get_feed(
     else:
         order_by = "p.likes_count DESC, p.timestamp DESC, p.post_id DESC" if normalized_order == "desc" else "p.likes_count ASC, p.timestamp ASC, p.post_id ASC"
 
+=======
+    sort: str = "time", 
+    sort_order: str = "desc", 
+    limit: int = 50, 
+    search: Optional[str] = None, 
+    filter_date: Optional[str] = None,
+    viewer: Optional[str] = None
+):
+    # Determine ORDER BY clause
+    if sort == "time":
+        order_by = "p.timestamp DESC" if sort_order == "desc" else "p.timestamp ASC"
+    else:  # sort == "popularity"
+        order_by = "p.likes_count DESC" if sort_order == "desc" else "p.likes_count ASC"
+    
+>>>>>>> Stashed changes
     conn = get_conn()
     query = f"""
         SELECT p.post_id as id, u.username, p.content as text_content, 
@@ -584,9 +600,22 @@ def get_feed(
         FROM posts p JOIN users u ON p.user_id = u.user_id
     """
     params = []
+    
+    # Build WHERE clause
+    where_conditions = []
     if search:
-        query += " WHERE p.content LIKE ?"
+        where_conditions.append("p.content LIKE ?")
         params.append(f"%{search}%")
+    
+    if filter_date:
+        # Filter posts created on the specific date (UTC)
+        # Date format: YYYY-MM-DD
+        where_conditions.append("DATE(p.timestamp) = ?")
+        params.append(filter_date)
+    
+    if where_conditions:
+        query += " WHERE " + " AND ".join(where_conditions)
+    
     query += f" ORDER BY {order_by} LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()
@@ -625,6 +654,17 @@ def get_user_posts(username: str, viewer: Optional[str] = None):
     for row in rows:
         post_dict = serialize_post_row(row, include_username=False)
         post_dict["liked_by_viewer"] = post_dict["id"] in liked_posts
+        
+        # Get list of users who liked this post
+        like_rows = conn.execute("""
+            SELECT u.username
+            FROM likes l
+            JOIN users u ON l.user_id = u.user_id
+            WHERE l.post_id = ?
+            ORDER BY l.timestamp ASC
+        """, (post_dict["id"],)).fetchall()
+        post_dict["liked_by_users"] = [row["username"] for row in like_rows]
+        
         result.append(post_dict)
     
     conn.close()
