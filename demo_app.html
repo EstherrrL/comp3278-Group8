@@ -1145,20 +1145,15 @@ window.addEventListener('DOMContentLoaded', () => {
     async function refreshFeed() {
       const container = $("feed-container");
       container.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">Loading feed...</div>';
-<<<<<<< Updated upstream
-      updateSortButtons();
-      try {
-        const params = new URLSearchParams({
-          sort: STATE.feedSort,
-          order: STATE.feedOrder,
-=======
+
       const orderButton = $("sort-order-toggle");
       orderButton.classList.toggle("sort-active", STATE.feedSortOrder === "asc");
       try {
         const params = new URLSearchParams({
           sort: STATE.feedSort,
           sort_order: STATE.feedSortOrder,
->>>>>>> Stashed changes
+          
+          
           limit: String(STATE.feedLimit),
           viewer: STATE.currentUser
         });
@@ -1606,19 +1601,6 @@ window.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll(".nav-button").forEach((button) => {
         button.addEventListener("click", () => switchView(button.dataset.view));
       });
-<<<<<<< Updated upstream
-      document.querySelectorAll(".sort-button").forEach((button) => {
-        button.addEventListener("click", () => {
-          const nextSort = button.dataset.sort;
-          if (STATE.feedSort === nextSort) {
-            STATE.feedOrder = STATE.feedOrder === "desc" ? "asc" : "desc";
-          } else {
-            STATE.feedSort = nextSort;
-            STATE.feedOrder = "desc";
-          }
-          refreshFeed();
-        });
-=======
       $("sort-order-toggle").addEventListener("click", () => {
         STATE.feedSortOrder = STATE.feedSortOrder === "desc" ? "asc" : "desc";
         const button = $("sort-order-toggle");
@@ -1628,7 +1610,6 @@ window.addEventListener('DOMContentLoaded', () => {
       $("feed-filter-date").addEventListener("change", (event) => {
         STATE.feedFilterDate = event.target.value;
         refreshFeed();
->>>>>>> Stashed changes
       });
       $("feed-limit").addEventListener("change", (event) => {
         STATE.feedLimit = Number(event.target.value);
