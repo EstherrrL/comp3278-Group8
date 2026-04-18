@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS idx_users_username    ON users(username);
 CREATE INDEX IF NOT EXISTS idx_posts_user_id     ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_timestamp   ON posts(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_date        ON posts(DATE(timestamp));  -- for GET /feed?filter_date=
 CREATE INDEX IF NOT EXISTS idx_posts_likes_count ON posts(likes_count DESC);
 CREATE INDEX IF NOT EXISTS idx_likes_post_id     ON likes(post_id);
 CREATE INDEX IF NOT EXISTS idx_comments_post_id  ON comments(post_id);
