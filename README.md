@@ -109,9 +109,11 @@ Stores text and/or image posts created by users.
 | `post_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique post identifier |
 | `user_id` | INTEGER | NOT NULL, FK → `users.user_id` | Author of the post |
 | `content` | TEXT | — | Text body of the post |
-| `image_url` | TEXT | — | Optional image URL |
+| `image_url` | TEXT | — | Legacy single image URL (kept for backward compatibility) |
+| `image_urls` | TEXT | — | JSON array of image URLs (supersedes `image_url`) |
 | `timestamp` | TEXT | NOT NULL DEFAULT `datetime('now')` | Post creation time |
 | `likes_count` | INTEGER | NOT NULL DEFAULT 0 | Denormalised like count for fast feed sorting |
+| `updated_at` | TEXT | — | Last-edited time; set by `PUT /posts/{post_id}` |
 
 > **Why denormalise `likes_count`?**  
 > Sorting a large feed by popularity requires counting likes per post on every request. Maintaining a counter column keeps the `ORDER BY likes_count DESC` query O(1) per row, at the cost of two extra writes per toggle-like operation.
@@ -160,6 +162,7 @@ Stores top-level comments and threaded replies on posts.
 | `idx_posts_user_id` | `posts` | `user_id` | Fetch all posts by a specific user |
 | `idx_posts_timestamp` | `posts` | `timestamp DESC` | Chronological feed (`ORDER BY timestamp DESC`) |
 | `idx_posts_likes_count` | `posts` | `likes_count DESC` | Popularity feed (`ORDER BY likes_count DESC`) |
+| `idx_posts_date` | `posts` | `DATE(timestamp)` | Date-filter feed (`GET /feed?filter_date=`) |
 | `idx_likes_post_id` | `likes` | `post_id` | Count / list users who liked a post |
 | `idx_comments_post_id` | `comments` | `post_id` | Fetch all comments for a post |
 | `idx_comments_parent` | `comments` | `parent_comment_id` | Fetch replies to a specific comment |
@@ -176,9 +179,11 @@ Stores top-level comments and threaded replies on posts.
 │ username      │     │ user_id           FK │
 │ email         │     │ content              │
 │ bio           │     │ image_url            │
-│ profile_pic   │     │ timestamp            │
-│ timestamp     │     │ likes_count          │
-└───────┬───────┘     └──────────┬───────────┘
+│ profile_pic   │     │ image_urls           │
+│ timestamp     │     │ timestamp            │
+└───────┬───────┘     │ likes_count          │
+        │             │ updated_at           │
+        │             └──────────┬───────────┘
         │                        │
         │  ┌──────────────────┐  │
         │  │      likes       │  │
