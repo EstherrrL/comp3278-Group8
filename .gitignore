@@ -79,7 +79,7 @@ target/
 .ipynb_checkpoints
 
 # Runtime data
-# uploads/ -- intentionally tracked so images are shared via git
+uploads/
 social_app.db
 social_app.db-*
 
