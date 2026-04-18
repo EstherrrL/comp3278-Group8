@@ -78,6 +78,11 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Runtime data
+uploads/
+social_app.db
+social_app.db-*
+
 # IPython
 profile_default/
 ipython_config.py

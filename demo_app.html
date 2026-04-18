@@ -309,6 +309,58 @@
       width: 1.2em;
       height: 1.2em;
     }
+
+    .upload-dropzone {
+      border: 1.5px dashed rgba(200, 90, 27, 0.32);
+      background: linear-gradient(180deg, rgba(255, 247, 237, 0.9), rgba(255, 255, 255, 0.95));
+      transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+      cursor: pointer;
+    }
+
+    .upload-dropzone:hover,
+    .upload-dropzone-active {
+      border-color: rgba(200, 90, 27, 0.72);
+      box-shadow: 0 18px 36px rgba(200, 90, 27, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .image-draft-grid {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    }
+
+    .image-draft-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 1rem;
+      background: #fff;
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    .image-draft-card img {
+      display: block;
+      width: 100%;
+      height: 8.5rem;
+      object-fit: cover;
+      background: rgba(241, 245, 249, 0.92);
+    }
+
+    .image-draft-remove {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      width: 1.9rem;
+      height: 1.9rem;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -350,8 +402,8 @@
               <h3 class="mt-2 text-3xl font-extrabold">Feed</h3>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              <button data-sort="time" class="sort-button rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition">By Time</button>
               <button data-sort="popularity" class="sort-button rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition">By Popularity</button>
-              <button id="sort-order-toggle" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition" title="Toggle sort order">↓ Newest</button>
               <input id="feed-filter-date" type="date" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-400" title="Filter posts by date">
               <select id="feed-limit" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-400">
                 <option value="10">10 posts</option>
@@ -382,8 +434,18 @@
           <h3 class="mt-2 text-3xl font-extrabold">Create a New Post</h3>
           <div id="post-feedback" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">A post created by the current user will appear in the feed immediately.</div>
           <textarea id="post-content" class="mt-5 h-40 w-full rounded-[1.6rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Write something here. You can post text only or attach an image."></textarea>
-          <textarea id="post-images" class="mt-4 h-28 w-full rounded-[1.4rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Image URLs, optional. Enter one URL per line or separate with commas."></textarea>
-          <p class="mt-2 text-sm text-slate-500">You can upload at most 9 images.</p>
+          <input id="post-image-files" type="file" accept="image/*" multiple class="hidden">
+          <div id="post-image-dropzone" class="upload-dropzone mt-4 rounded-[1.5rem] px-5 py-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="text-base font-extrabold text-slate-900">Add images</div>
+                <div class="mt-1 text-sm text-slate-500">Drop images here or click to browse. Up to 9 files.</div>
+              </div>
+              <button id="post-image-picker-button" type="button" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Choose Images</button>
+            </div>
+          </div>
+          <div id="post-image-summary" class="mt-3 text-sm text-slate-500">No images selected.</div>
+          <div id="post-image-preview-list" class="mt-4 image-draft-grid"></div>
           <div class="mt-5 flex justify-end">
             <button id="create-post-button" class="rounded-[1.4rem] bg-gradient-to-r from-orange-600 to-orange-400 px-6 py-4 text-base font-bold text-white transition hover:opacity-90">Publish Post</button>
           </div>
@@ -506,25 +568,22 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
     const SESSION_STORAGE_KEY = "hkugram-active-user";
+  const UI_STATE_STORAGE_KEY = "hkugram-ui-state";
     const LOGIN_PAGE = "./demo_index.html";
     const MAX_POST_IMAGES = 9;
 
     const STATE = {
       currentUser: "",
       currentView: "home",
-<<<<<<< Updated upstream
       feedSort: "time",
-      feedOrder: "desc",
-=======
-      feedSort: "popularity",      // Default to popularity sorting
       feedSortOrder: "desc",       // 'desc' for newest/most popular first, 'asc' for oldest/least popular first
       feedFilterDate: "",          // filter to specific date (YYYY-MM-DD)
->>>>>>> Stashed changes
       feedLimit: 20,
       feedPosts: [],
       rankingsData: null,
       replyState: {},
-      profileEditState: {}
+      profileEditState: {},
+      createPostFiles: []
     };
 
     const RANK_BADGES = [
@@ -555,13 +614,257 @@ window.addEventListener('DOMContentLoaded', () => {
       element.textContent = message;
     }
 
+    function saveUiState() {
+      sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify({
+        currentView: STATE.currentView,
+        feedSort: STATE.feedSort,
+        feedSortOrder: STATE.feedSortOrder,
+        feedFilterDate: STATE.feedFilterDate,
+        feedLimit: STATE.feedLimit
+      }));
+    }
+
+    function loadUiState() {
+      try {
+        const rawState = sessionStorage.getItem(UI_STATE_STORAGE_KEY);
+        if (!rawState) {
+          return;
+        }
+        const parsedState = JSON.parse(rawState);
+        if (parsedState.feedSort === "time" || parsedState.feedSort === "popularity") {
+          STATE.feedSort = parsedState.feedSort;
+        }
+        if (parsedState.feedSortOrder === "asc" || parsedState.feedSortOrder === "desc") {
+          STATE.feedSortOrder = parsedState.feedSortOrder;
+        }
+        if (typeof parsedState.feedFilterDate === "string") {
+          STATE.feedFilterDate = parsedState.feedFilterDate;
+        }
+        if ([10, 20, 50].includes(Number(parsedState.feedLimit))) {
+          STATE.feedLimit = Number(parsedState.feedLimit);
+        }
+        if (["home", "rankings", "create", "profile", "ai"].includes(parsedState.currentView)) {
+          STATE.currentView = parsedState.currentView;
+        }
+      } catch {
+        sessionStorage.removeItem(UI_STATE_STORAGE_KEY);
+      }
+    }
+
+    function resolveImageUrl(imageUrl) {
+      const normalizedUrl = String(imageUrl || "").trim();
+      if (!normalizedUrl) {
+        return "";
+      }
+      if (/^https?:\/\//i.test(normalizedUrl)) {
+        return normalizedUrl;
+      }
+      if (normalizedUrl.startsWith("/")) {
+        return `${API_BASE}${normalizedUrl}`;
+      }
+      return normalizedUrl;
+    }
+
+    function createFileEntry(file) {
+      return {
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: file.name || "image"
+      };
+    }
+
+    function revokeFileEntries(entries) {
+      (entries || []).forEach((entry) => {
+        if (entry && entry.previewUrl) {
+          URL.revokeObjectURL(entry.previewUrl);
+        }
+      });
+    }
+
+    function appendImageFiles(fileList, existingCount, targetEntries, onError) {
+      const files = Array.from(fileList || []);
+      if (!files.length) {
+        return false;
+      }
+
+      if (files.some((file) => !String(file.type || "").startsWith("image/"))) {
+        onError("Only image files are supported.");
+        return false;
+      }
+
+      if (existingCount + targetEntries.length + files.length > MAX_POST_IMAGES) {
+        onError(`You can upload at most ${MAX_POST_IMAGES} images.`);
+        return false;
+      }
+
+      targetEntries.push(...files.map((file) => createFileEntry(file)));
+      return true;
+    }
+
+    function renderImageDraftCards(existingImageUrls = [], pendingEntries = [], mode = "create", postId = null) {
+      const cards = [];
+
+      existingImageUrls.forEach((imageUrl, index) => {
+        cards.push(`
+          <div class="image-draft-card">
+            <img src="${escapeHtml(resolveImageUrl(imageUrl))}" alt="Selected image ${index + 1}" loading="lazy">
+            <button type="button" class="image-draft-remove" data-remove-existing-image="${mode}:${postId ?? "new"}:${index}" aria-label="Remove image">×</button>
+            <div class="px-3 py-2 text-xs font-semibold text-slate-500">Uploaded image</div>
+          </div>
+        `);
+      });
+
+      pendingEntries.forEach((entry, index) => {
+        cards.push(`
+          <div class="image-draft-card">
+            <img src="${escapeHtml(entry.previewUrl)}" alt="Selected file ${index + 1}" loading="lazy">
+            <button type="button" class="image-draft-remove" data-remove-pending-image="${mode}:${postId ?? "new"}:${index}" aria-label="Remove image">×</button>
+            <div class="truncate px-3 py-2 text-xs font-semibold text-slate-500">${escapeHtml(entry.name || "image")}</div>
+          </div>
+        `);
+      });
+
+      return cards.join("");
+    }
+
+    function renderCreateImageDraft() {
+      const previewContainer = $("post-image-preview-list");
+      const summary = $("post-image-summary");
+      if (!previewContainer || !summary) {
+        return;
+      }
+
+      const pendingCount = STATE.createPostFiles.length;
+      summary.textContent = pendingCount
+        ? `${pendingCount}/${MAX_POST_IMAGES} images selected.`
+        : "No images selected.";
+      previewContainer.innerHTML = renderImageDraftCards([], STATE.createPostFiles, "create");
+      previewContainer.querySelectorAll("[data-remove-pending-image]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const index = Number(button.dataset.removePendingImage.split(":").pop());
+          const [removedEntry] = STATE.createPostFiles.splice(index, 1);
+          revokeFileEntries(removedEntry ? [removedEntry] : []);
+          renderCreateImageDraft();
+        });
+      });
+    }
+
+    function clearCreateImageDraft() {
+      revokeFileEntries(STATE.createPostFiles);
+      STATE.createPostFiles = [];
+      renderCreateImageDraft();
+      if ($("post-image-files")) {
+        $("post-image-files").value = "";
+      }
+    }
+
+    function getProfileEditState(postId) {
+      return STATE.profileEditState[postId] || null;
+    }
+
+    function resetProfileEditState(postId) {
+      const editState = getProfileEditState(postId);
+      if (!editState) {
+        return;
+      }
+      revokeFileEntries(editState.pendingFiles || []);
+      delete STATE.profileEditState[postId];
+    }
+
+    function renderEditImagePicker(postId, editState) {
+      const existingImages = Array.isArray(editState.existingImageUrls) ? editState.existingImageUrls : [];
+      const pendingImages = Array.isArray(editState.pendingFiles) ? editState.pendingFiles : [];
+      const totalImages = existingImages.length + pendingImages.length;
+
+      return `
+        <input id="edit-image-files-${postId}" type="file" accept="image/*" multiple class="hidden">
+        <div id="edit-image-dropzone-${postId}" class="upload-dropzone mt-4 rounded-[1.3rem] px-4 py-5">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div class="text-sm font-extrabold text-slate-900">Edit images</div>
+              <div class="mt-1 text-xs text-slate-500">Drop images here or click to browse. Up to ${MAX_POST_IMAGES} files.</div>
+            </div>
+            <button data-edit-image-picker="${postId}" type="button" class="rounded-full border border-orange-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Choose Images</button>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-500">${totalImages ? `${totalImages}/${MAX_POST_IMAGES} images selected.` : "No images selected."}</div>
+        <div class="mt-4 image-draft-grid">${renderImageDraftCards(existingImages, pendingImages, "edit", postId)}</div>
+      `;
+    }
+
+    async function uploadSelectedImages(entries) {
+      if (!entries.length) {
+        return [];
+      }
+
+      const formData = new FormData();
+      entries.forEach((entry) => {
+        formData.append("files", entry.file, entry.name || entry.file?.name || "image");
+      });
+
+      const response = await fetch(`${API_BASE}/api/uploads/images`, {
+        method: "POST",
+        body: formData
+      });
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const message = payload && (payload.detail || payload.message)
+          ? payload.detail || payload.message
+          : `Upload failed (${response.status})`;
+        throw new Error(message);
+      }
+
+      return Array.isArray(payload?.uploaded_urls) ? payload.uploaded_urls : [];
+    }
+
+    function bindDropzone(dropzone, input, onFiles) {
+      if (!dropzone || !input) {
+        return;
+      }
+
+      const activate = () => dropzone.classList.add("upload-dropzone-active");
+      const deactivate = () => dropzone.classList.remove("upload-dropzone-active");
+
+      dropzone.addEventListener("click", () => input.click());
+      dropzone.addEventListener("dragenter", (event) => {
+        event.preventDefault();
+        activate();
+      });
+      dropzone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        activate();
+      });
+      dropzone.addEventListener("dragleave", (event) => {
+        if (event.target === dropzone) {
+          deactivate();
+        }
+      });
+      dropzone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        deactivate();
+        onFiles(event.dataTransfer?.files || []);
+      });
+      input.addEventListener("change", (event) => {
+        onFiles(event.target.files || []);
+        input.value = "";
+      });
+    }
+
     function getSortButtonText(sortKey) {
       return sortKey === "time" ? "By Time" : "By Popularity";
     }
 
     function renderSortButtonContent(sortKey) {
       const isActive = STATE.feedSort === sortKey;
-      const isDescending = STATE.feedOrder === "desc";
+      const isDescending = STATE.feedSortOrder === "desc";
       const upClass = isActive && !isDescending ? "sort-arrow-active" : "sort-arrow-inactive";
       const downClass = isActive && isDescending ? "sort-arrow-active" : "sort-arrow-inactive";
 
@@ -581,7 +884,7 @@ window.addEventListener('DOMContentLoaded', () => {
         button.innerHTML = renderSortButtonContent(button.dataset.sort);
         button.setAttribute(
           "aria-label",
-          `${getSortButtonText(button.dataset.sort)} ${isActive ? (STATE.feedOrder === "desc" ? "descending" : "ascending") : "toggle"}`
+          `${getSortButtonText(button.dataset.sort)} ${isActive ? (STATE.feedSortOrder === "desc" ? "descending" : "ascending") : "toggle"}`
         );
       });
     }
@@ -590,7 +893,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (STATE.feedSort === "popularity") {
         const likeDifference = Number(leftPost.like_count || 0) - Number(rightPost.like_count || 0);
         if (likeDifference !== 0) {
-          return STATE.feedOrder === "asc" ? likeDifference : -likeDifference;
+          return STATE.feedSortOrder === "asc" ? likeDifference : -likeDifference;
         }
       }
 
@@ -598,11 +901,11 @@ window.addEventListener('DOMContentLoaded', () => {
       const rightTimestamp = String(rightPost.created_at || "");
       const timeDifference = leftTimestamp.localeCompare(rightTimestamp);
       if (timeDifference !== 0) {
-        return STATE.feedOrder === "asc" ? timeDifference : -timeDifference;
+        return STATE.feedSortOrder === "asc" ? timeDifference : -timeDifference;
       }
 
       const idDifference = Number(leftPost.id || 0) - Number(rightPost.id || 0);
-      return STATE.feedOrder === "asc" ? idDifference : -idDifference;
+      return STATE.feedSortOrder === "asc" ? idDifference : -idDifference;
     }
 
     function sortFeedPosts(posts) {
@@ -836,6 +1139,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function switchView(view) {
       STATE.currentView = view;
+      saveUiState();
       document.querySelectorAll(".nav-button").forEach((button) => {
         button.classList.toggle("nav-button-active", button.dataset.view === view);
       });
@@ -989,13 +1293,14 @@ window.addEventListener('DOMContentLoaded', () => {
     function openProfilePostEditor(post) {
       STATE.profileEditState[post.id] = {
         content: post.text_content || "",
-        imageUrlsText: (post.image_urls || []).join("\n")
+        existingImageUrls: getPostImages(post),
+        pendingFiles: []
       };
       refreshProfile();
     }
 
     function closeProfilePostEditor(postId) {
-      delete STATE.profileEditState[postId];
+      resetProfileEditState(postId);
       refreshProfile();
     }
 
@@ -1006,7 +1311,9 @@ window.addEventListener('DOMContentLoaded', () => {
       }
 
       const contentInput = card.querySelector(`[data-edit-content="${postId}"]`);
-      const imageInput = card.querySelector(`[data-edit-images="${postId}"]`);
+      const imageInput = card.querySelector(`#edit-image-files-${postId}`);
+      const dropzone = card.querySelector(`#edit-image-dropzone-${postId}`);
+      const pickerButton = card.querySelector(`[data-edit-image-picker="${postId}"]`);
 
       if (contentInput) {
         contentInput.addEventListener("input", (event) => {
@@ -1014,26 +1321,38 @@ window.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      if (imageInput) {
-        imageInput.addEventListener("input", (event) => {
-          editState.imageUrlsText = event.target.value;
+      if (pickerButton && imageInput) {
+        pickerButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          imageInput.click();
         });
       }
-    }
 
-    function parseImageUrls(value) {
-      return String(value || "")
-        .split(/[\n,]/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, MAX_POST_IMAGES);
-    }
+      bindDropzone(dropzone, imageInput, (files) => {
+        const updated = appendImageFiles(files, editState.existingImageUrls.length, editState.pendingFiles, (message) => alert(message));
+        if (updated) {
+          refreshProfile();
+        }
+      });
 
-    function countImageUrls(value) {
-      return String(value || "")
-        .split(/[\n,]/)
-        .map((item) => item.trim())
-        .filter(Boolean).length;
+      card.querySelectorAll("[data-remove-existing-image]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const index = Number(button.dataset.removeExistingImage.split(":").pop());
+          editState.existingImageUrls.splice(index, 1);
+          refreshProfile();
+        });
+      });
+
+      card.querySelectorAll("[data-remove-pending-image]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const index = Number(button.dataset.removePendingImage.split(":").pop());
+          const [removedEntry] = editState.pendingFiles.splice(index, 1);
+          revokeFileEntries(removedEntry ? [removedEntry] : []);
+          refreshProfile();
+        });
+      });
     }
 
     function getPostImages(post) {
@@ -1056,7 +1375,7 @@ window.addEventListener('DOMContentLoaded', () => {
     function openImagePreview(imageUrl) {
       const modal = $("image-preview-modal");
       const image = $("image-preview-target");
-      image.src = imageUrl;
+      image.src = resolveImageUrl(imageUrl);
       modal.classList.remove("hidden-view");
       modal.setAttribute("aria-hidden", "false");
       document.body.classList.add("preview-open");
@@ -1087,10 +1406,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
       if (imageUrls.length === 1) {
         const imageUrl = imageUrls[0];
+        const resolvedImageUrl = resolveImageUrl(imageUrl);
         return `
           <div class="post-image-single">
             <button type="button" class="post-image-frame" data-preview-image="${escapeHtml(imageUrl)}" aria-label="Preview image 1">
-              <img src="${escapeHtml(imageUrl)}" alt="post image 1" loading="lazy">
+              <img src="${escapeHtml(resolvedImageUrl)}" alt="post image 1" loading="lazy">
             </button>
           </div>
         `;
@@ -1099,11 +1419,14 @@ window.addEventListener('DOMContentLoaded', () => {
       const gridClass = `post-image-grid cols-${getImageGridColumns(imageUrls.length)}`;
       return `
         <div class="${gridClass}">
-          ${imageUrls.map((imageUrl, index) => `
+          ${imageUrls.map((imageUrl, index) => {
+            const resolvedImageUrl = resolveImageUrl(imageUrl);
+            return `
             <button type="button" class="post-image-frame" data-preview-image="${escapeHtml(imageUrl)}" aria-label="Preview image ${index + 1}">
-              <img src="${escapeHtml(imageUrl)}" alt="post image ${index + 1}" loading="lazy">
+              <img src="${escapeHtml(resolvedImageUrl)}" alt="post image ${index + 1}" loading="lazy">
             </button>
-          `).join("")}
+          `;
+          }).join("")}
         </div>
       `;
     }
@@ -1146,8 +1469,8 @@ window.addEventListener('DOMContentLoaded', () => {
       const container = $("feed-container");
       container.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">Loading feed...</div>';
 
-      const orderButton = $("sort-order-toggle");
-      orderButton.classList.toggle("sort-active", STATE.feedSortOrder === "asc");
+      saveUiState();
+      updateSortButtons();
       try {
         const params = new URLSearchParams({
           sort: STATE.feedSort,
@@ -1182,31 +1505,26 @@ window.addEventListener('DOMContentLoaded', () => {
 
     async function createPost() {
       const content = $("post-content").value.trim();
-      const rawImageValue = $("post-images").value;
-      const imageCount = countImageUrls(rawImageValue);
-      const imageUrls = parseImageUrls(rawImageValue);
-      if (imageCount > MAX_POST_IMAGES) {
-        setViewMessage("post-feedback", `You can upload at most ${MAX_POST_IMAGES} images.`, "error");
-        return;
-      }
-      if (!content && !imageUrls.length) {
+      if (!content && !STATE.createPostFiles.length) {
         setViewMessage("post-feedback", "Content and image cannot both be empty.", "error");
         return;
       }
       try {
+        setViewMessage("post-feedback", "Uploading images and publishing post...", "neutral");
+        const uploadedUrls = await uploadSelectedImages(STATE.createPostFiles);
         const payload = await fetchJson(`${API_BASE}/posts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             username: STATE.currentUser,
             content: content || null,
-            image_url: imageUrls[0] || null,
-            image_urls: imageUrls.length ? imageUrls : null
+            image_url: uploadedUrls[0] || null,
+            image_urls: uploadedUrls.length ? uploadedUrls : null
           })
         });
         $("post-content").value = "";
-        $("post-images").value = "";
-        setViewMessage("post-feedback", payload.message || "帖子发布成功。", "success");
+        clearCreateImageDraft();
+        setViewMessage("post-feedback", payload.message || "Post published successfully.", "success");
         switchView("home");
       } catch (error) {
         setViewMessage("post-feedback", error.message, "error");
@@ -1228,7 +1546,8 @@ window.addEventListener('DOMContentLoaded', () => {
           const isEditing = isProfilePostEditing(post.id);
           const editState = STATE.profileEditState[post.id] || {
             content: post.text_content || "",
-            imageUrlsText: getPostImages(post).join("\n")
+            existingImageUrls: getPostImages(post),
+            pendingFiles: []
           };
           const card = document.createElement("article");
           card.className = "slide-up rounded-[1.6rem] bg-white p-5 ring-1 ring-orange-100";
@@ -1248,8 +1567,7 @@ window.addEventListener('DOMContentLoaded', () => {
             </div>
             ${isEditing
               ? `<textarea data-edit-content="${post.id}" class="mt-4 h-36 w-full rounded-[1.3rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Write updated content">${escapeHtml(editState.content)}</textarea>
-                <textarea data-edit-images="${post.id}" class="mt-4 h-28 w-full rounded-[1.2rem] border border-orange-100 bg-orange-50/40 px-4 py-3 outline-none transition focus:border-orange-400" placeholder="Image URLs, one per line or comma separated">${escapeHtml(editState.imageUrlsText)}</textarea>
-                <div class="mt-2 text-xs text-slate-500">You can upload at most 9 images.</div>
+                ${renderEditImagePicker(post.id, editState)}
                  <div class="mt-3 text-xs text-slate-500">Saving will overwrite the original post content.</div>`
               : `<p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">${escapeHtml(post.text_content || "") || "<span class=\"text-slate-400\">Image-only post</span>"}</p>
                 ${renderPostImages(post)}`}
@@ -1297,18 +1615,20 @@ window.addEventListener('DOMContentLoaded', () => {
       }
 
       const content = editState.content.trim();
-      const imageCount = countImageUrls(editState.imageUrlsText);
-      const imageUrls = parseImageUrls(editState.imageUrlsText);
-      if (imageCount > MAX_POST_IMAGES) {
+      const existingImages = Array.isArray(editState.existingImageUrls) ? editState.existingImageUrls : [];
+      const pendingFiles = Array.isArray(editState.pendingFiles) ? editState.pendingFiles : [];
+      if (existingImages.length + pendingFiles.length > MAX_POST_IMAGES) {
         alert(`You can upload at most ${MAX_POST_IMAGES} images.`);
         return;
       }
-      if (!content && !imageUrls.length) {
+      if (!content && !existingImages.length && !pendingFiles.length) {
         alert("Content and image cannot both be empty.");
         return;
       }
 
       try {
+        const uploadedUrls = await uploadSelectedImages(pendingFiles);
+        const imageUrls = [...existingImages, ...uploadedUrls].slice(0, MAX_POST_IMAGES);
         await fetchJson(`${API_BASE}/posts/${postId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1320,7 +1640,7 @@ window.addEventListener('DOMContentLoaded', () => {
           })
         });
 
-        delete STATE.profileEditState[postId];
+        resetProfileEditState(postId);
         const feedPost = getFeedPost(postId);
         if (feedPost) {
           feedPost.text_content = content || null;
@@ -1349,7 +1669,7 @@ window.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ username: STATE.currentUser })
         });
 
-        delete STATE.profileEditState[postId];
+        resetProfileEditState(postId);
         STATE.feedPosts = STATE.feedPosts.filter((post) => post.id !== postId);
         await refreshProfile();
       } catch (error) {
@@ -1601,18 +1921,40 @@ window.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll(".nav-button").forEach((button) => {
         button.addEventListener("click", () => switchView(button.dataset.view));
       });
-      $("sort-order-toggle").addEventListener("click", () => {
-        STATE.feedSortOrder = STATE.feedSortOrder === "desc" ? "asc" : "desc";
-        const button = $("sort-order-toggle");
-        button.textContent = STATE.feedSortOrder === "desc" ? "↓ Newest" : "↑ Oldest";
-        refreshFeed();
+      document.querySelectorAll(".sort-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const selectedSort = button.dataset.sort;
+          if (STATE.feedSort === selectedSort) {
+            STATE.feedSortOrder = STATE.feedSortOrder === "desc" ? "asc" : "desc";
+          } else {
+            STATE.feedSort = selectedSort;
+            STATE.feedSortOrder = "desc";
+          }
+          saveUiState();
+          updateSortButtons();
+          refreshFeed();
+        });
       });
+      bindDropzone($("post-image-dropzone"), $("post-image-files"), (files) => {
+        const updated = appendImageFiles(files, 0, STATE.createPostFiles, (message) => setViewMessage("post-feedback", message, "error"));
+        if (updated) {
+          renderCreateImageDraft();
+        }
+      });
+      $("post-image-picker-button").addEventListener("click", (event) => {
+        event.stopPropagation();
+        $("post-image-files").click();
+      });
+      $("feed-filter-date").value = STATE.feedFilterDate;
+      $("feed-limit").value = String(STATE.feedLimit);
       $("feed-filter-date").addEventListener("change", (event) => {
         STATE.feedFilterDate = event.target.value;
+        saveUiState();
         refreshFeed();
       });
       $("feed-limit").addEventListener("change", (event) => {
         STATE.feedLimit = Number(event.target.value);
+        saveUiState();
         refreshFeed();
       });
       $("refresh-feed-button").addEventListener("click", refreshFeed);
@@ -1648,11 +1990,14 @@ window.addEventListener('DOMContentLoaded', () => {
         window.location.href = LOGIN_PAGE;
         return;
       }
+      loadUiState();
       STATE.currentUser = currentUser;
       updateSessionHeader();
       bindEvents();
+      updateSortButtons();
+      renderCreateImageDraft();
       appendChatBubble("assistant", "You can ask a database question directly, for example: Which user's posts have the most likes?");
-      switchView("home");
+      switchView(STATE.currentView || "home");
     }
 
     window.addEventListener("load", init);

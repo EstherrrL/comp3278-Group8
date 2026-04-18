@@ -7,9 +7,13 @@ HKUgram Group8 最终完美版 - 完整功能版本
 #===================== 导入依赖库 =====================
 import os
 import json
+import re
 import sqlite3
+from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
+from uuid import uuid4
+
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import database as database_module
@@ -29,19 +33,29 @@ from vanna.integrations.local.agent_memory import DemoAgentMemory
 # 数据库文件路径
 DB_PATH = database_module.DB_PATH
 MAX_POST_IMAGES = 9
+LOCAL_IMAGE_PATH_ERROR = "Local filesystem image paths are not supported. Please upload the image or use an http(s) URL."
+LOCAL_PATH_PATTERNS = (
+    re.compile(r"^file://", re.IGNORECASE),
+    re.compile(r"^/Users/", re.IGNORECASE),
+    re.compile(r"^/home/", re.IGNORECASE),
+    re.compile(r"^[A-Za-z]:\\"),
+)
 
 app = FastAPI(title="HKUgram - Group8 最终完美版")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 #for getting server on the local network--
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import os
 
 # Get the directory where app.py is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+UPLOAD_IMAGES_DIR = os.path.join(UPLOADS_DIR, "images")
+os.makedirs(UPLOAD_IMAGES_DIR, exist_ok=True)
 
 # Serve static files (HTML, CSS, JS)
 app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 @app.get("/")
 async def serve_login():
@@ -279,18 +293,33 @@ def get_post_author_id(conn: sqlite3.Connection, post_id: int):
     return post["user_id"] if post else None
 
 
+def validate_image_reference(image_reference: str) -> str:
+    cleaned_reference = str(image_reference or "").strip()
+    if not cleaned_reference:
+        return ""
+
+    for pattern in LOCAL_PATH_PATTERNS:
+        if pattern.search(cleaned_reference):
+            raise HTTPException(400, LOCAL_IMAGE_PATH_ERROR)
+
+    if cleaned_reference.startswith("/") and not cleaned_reference.startswith("/uploads/"):
+        raise HTTPException(400, LOCAL_IMAGE_PATH_ERROR)
+
+    return cleaned_reference
+
+
 def normalize_image_urls(image_url: Optional[str], image_urls: Optional[list[str]]) -> list[str]:
     normalized_urls: list[str] = []
 
     for candidate in image_urls or []:
         if candidate is None:
             continue
-        cleaned = candidate.strip()
-        if cleaned:
+        cleaned = validate_image_reference(candidate)
+        if cleaned and cleaned not in normalized_urls:
             normalized_urls.append(cleaned)
 
     if image_url:
-        cleaned_single_url = image_url.strip()
+        cleaned_single_url = validate_image_reference(image_url)
         if cleaned_single_url and cleaned_single_url not in normalized_urls:
             normalized_urls.insert(0, cleaned_single_url)
 
@@ -338,6 +367,43 @@ def get_liked_posts_by_user(username: str):
     rows = conn.execute("SELECT post_id FROM likes WHERE user_id=?", (user_id,)).fetchall()
     conn.close()
     return {row["post_id"] for row in rows}
+
+
+@app.post("/api/uploads/images")
+async def upload_images(files: list[UploadFile] = File(...)):
+    if not files:
+        raise HTTPException(400, "Please choose at least one image.")
+
+    if len(files) > MAX_POST_IMAGES:
+        raise HTTPException(400, f"You can upload at most {MAX_POST_IMAGES} images at a time.")
+
+    uploaded_urls: list[str] = []
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+    for upload in files:
+        content_type = (upload.content_type or "").lower()
+        if not content_type.startswith("image/"):
+            raise HTTPException(400, f"{upload.filename or 'File'} is not an image.")
+
+        original_name = upload.filename or "image"
+        suffix = Path(original_name).suffix.lower()
+        if suffix not in allowed_extensions:
+            guessed_suffix = content_type.replace("image/", "").split("+", 1)[0]
+            suffix = f".{guessed_suffix}" if guessed_suffix else ".jpg"
+
+        filename = f"{uuid4().hex}{suffix}"
+        destination_path = os.path.join(UPLOAD_IMAGES_DIR, filename)
+
+        content = await upload.read()
+        if not content:
+            raise HTTPException(400, f"{original_name} is empty.")
+
+        with open(destination_path, "wb") as destination_file:
+            destination_file.write(content)
+
+        uploaded_urls.append(f"/uploads/images/{filename}")
+
+    return {"uploaded_urls": uploaded_urls}
 
 # ===================== API 端点 =====================
 @app.get("/users")
@@ -575,9 +641,9 @@ def get_feed(
 
     # Determine ORDER BY clause
     if sort == "time":
-        order_by = "p.timestamp DESC" if sort_order == "desc" else "p.timestamp ASC"
+        order_by = "p.timestamp DESC, p.post_id DESC" if sort_order == "desc" else "p.timestamp ASC, p.post_id ASC"
     else:  # sort == "popularity"
-        order_by = "p.likes_count DESC" if sort_order == "desc" else "p.likes_count ASC"
+        order_by = "p.likes_count DESC, p.timestamp DESC, p.post_id DESC" if sort_order == "desc" else "p.likes_count ASC, p.timestamp ASC, p.post_id ASC"
 
     conn = get_conn()
     query = f"""

@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
@@ -210,18 +211,68 @@ class FeedSortingTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_feed_can_sort_by_time_in_both_directions(self):
-        newest_first = social_app.get_feed(sort="time", order="desc")
-        oldest_first = social_app.get_feed(sort="time", order="asc")
+        newest_first = social_app.get_feed(sort="time", sort_order="desc")
+        oldest_first = social_app.get_feed(sort="time", sort_order="asc")
 
         self.assertEqual([post["id"] for post in newest_first], [3, 2, 1])
         self.assertEqual([post["id"] for post in oldest_first], [1, 2, 3])
 
     def test_feed_can_sort_by_popularity_in_both_directions(self):
-        most_liked_first = social_app.get_feed(sort="popularity", order="desc")
-        least_liked_first = social_app.get_feed(sort="popularity", order="asc")
+        most_liked_first = social_app.get_feed(sort="popularity", sort_order="desc")
+        least_liked_first = social_app.get_feed(sort="popularity", sort_order="asc")
 
         self.assertEqual([post["id"] for post in most_liked_first], [1, 2, 3])
         self.assertEqual([post["id"] for post in least_liked_first], [3, 2, 1])
+
+
+class ImageUploadTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.original_db_path = social_app.DB_PATH
+        self.original_uploads_dir = social_app.UPLOADS_DIR
+        self.original_upload_images_dir = social_app.UPLOAD_IMAGES_DIR
+
+        social_app.DB_PATH = str(Path(self.temp_dir.name) / "test_social_app.db")
+        social_app.UPLOADS_DIR = str(Path(self.temp_dir.name) / "uploads")
+        social_app.UPLOAD_IMAGES_DIR = str(Path(social_app.UPLOADS_DIR) / "images")
+        Path(social_app.UPLOAD_IMAGES_DIR).mkdir(parents=True, exist_ok=True)
+
+        social_app.init_db()
+        social_app.create_user(social_app.CreateUser(username="alice"))
+        self.client = TestClient(social_app.app)
+
+    def tearDown(self):
+        social_app.DB_PATH = self.original_db_path
+        social_app.UPLOADS_DIR = self.original_uploads_dir
+        social_app.UPLOAD_IMAGES_DIR = self.original_upload_images_dir
+        self.temp_dir.cleanup()
+
+    def test_upload_images_returns_server_urls(self):
+        response = self.client.post(
+            "/api/uploads/images",
+            files=[
+                ("files", ("first.png", b"fake-image-1", "image/png")),
+                ("files", ("second.jpg", b"fake-image-2", "image/jpeg")),
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["uploaded_urls"]), 2)
+        self.assertTrue(payload["uploaded_urls"][0].startswith("/uploads/images/"))
+
+    def test_create_post_rejects_local_file_paths(self):
+        with self.assertRaises(HTTPException) as context:
+            social_app.create_post(
+                social_app.CreatePost(
+                    username="alice",
+                    content="bad image path",
+                    image_url="file:///Users/example/Desktop/test.png",
+                )
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("Local filesystem image paths", context.exception.detail)
 
 
 if __name__ == "__main__":

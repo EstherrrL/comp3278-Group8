@@ -1,3 +1,4 @@
 fastapi
 uvicorn
+python-multipart
 vanna[anthropic,fastapi,openai]
