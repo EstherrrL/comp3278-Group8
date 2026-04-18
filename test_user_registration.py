@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -260,6 +261,64 @@ class ImageUploadTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(len(payload["uploaded_urls"]), 2)
         self.assertTrue(payload["uploaded_urls"][0].startswith("/uploads/images/"))
+
+    def test_create_post_normalizes_local_upload_urls_to_relative_paths(self):
+        social_app.create_post(
+            social_app.CreatePost(
+                username="alice",
+                content="portable upload path",
+                image_urls=[
+                    "http://127.0.0.1:8000/uploads/images/example.png",
+                    "http://192.168.1.88:8000/uploads/images/second.png",
+                ],
+            )
+        )
+
+        posts = social_app.get_user_posts("alice")
+        self.assertEqual(
+            posts[0]["image_urls"],
+            [
+                "/uploads/images/example.png",
+                "/uploads/images/second.png",
+            ],
+        )
+        self.assertEqual(posts[0]["image_url"], "/uploads/images/example.png")
+
+    def test_upload_image_from_url_downloads_and_stores_server_copy(self):
+        class FakeResponse:
+            def __init__(self, body: bytes, content_type: str):
+                self._body = body
+                self.headers = {"Content-Type": content_type}
+
+            def read(self, *_args, **_kwargs):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.object(social_app, "urlopen", return_value=FakeResponse(b"remote-image", "image/png")):
+            response = self.client.post(
+                "/api/uploads/image-url",
+                json={"image_url": "https://example.com/sample.png"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["uploaded_url"].startswith("/uploads/images/"))
+        saved_path = Path(social_app.UPLOADS_DIR) / payload["uploaded_url"].replace("/uploads/", "", 1)
+        self.assertTrue(saved_path.exists())
+
+    def test_upload_image_from_url_rejects_non_http_urls(self):
+        response = self.client.post(
+            "/api/uploads/image-url",
+            json={"image_url": "/uploads/images/already-local.png"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("http(s)", response.json()["detail"])
 
     def test_create_post_rejects_local_file_paths(self):
         with self.assertRaises(HTTPException) as context:
