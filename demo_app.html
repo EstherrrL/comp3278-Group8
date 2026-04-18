@@ -923,7 +923,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!response.ok) {
         const message = payload && (payload.detail || payload.message)
           ? payload.detail || payload.message
-          : `请求失败 (${response.status})`;
+          : `Request failed (${response.status})`;
         throw new Error(message);
       }
       return payload;
@@ -1554,7 +1554,7 @@ window.addEventListener('DOMContentLoaded', () => {
           card.innerHTML = `
             <div class="flex items-center justify-between gap-3">
               <div>
-                <div class="text-base font-extrabold text-slate-900">帖子 #${post.id}</div>
+                <div class="text-base font-extrabold text-slate-900">Post #${post.id}</div>
                 <div class="mt-1 text-xs text-slate-500">${escapeHtml(post.created_at || "")}</div>
               </div>
               <div class="flex flex-wrap gap-2">
