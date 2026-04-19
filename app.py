@@ -7,18 +7,12 @@ HKUgram Group8 最终完美版 - 完整功能版本
 #===================== 导入依赖库 =====================
 import os
 import json
-import ipaddress
-import mimetypes
 import re
 import sqlite3
-from pathlib import Path
 from typing import Optional
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request as UrlRequest, urlopen
-from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import database as database_module
@@ -38,9 +32,8 @@ from vanna.integrations.local.agent_memory import DemoAgentMemory
 # 数据库文件路径
 DB_PATH = database_module.DB_PATH
 MAX_POST_IMAGES = 9
-MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024
-LOCAL_IMAGE_PATH_ERROR = "Local filesystem image paths are not supported. Please upload the image or use an http(s) URL."
-ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+LOCAL_IMAGE_PATH_ERROR = "Local filesystem image paths are not supported. Please use an https image URL."
+HTTPS_IMAGE_URL_ERROR = "Only https image URLs are supported."
 LOCAL_PATH_PATTERNS = (
     re.compile(r"^file://", re.IGNORECASE),
     re.compile(r"^/Users/", re.IGNORECASE),
@@ -313,89 +306,17 @@ def validate_image_reference(image_reference: str) -> str:
         if pattern.search(cleaned_reference):
             raise HTTPException(400, LOCAL_IMAGE_PATH_ERROR)
 
-    if cleaned_reference.startswith("/") and not cleaned_reference.startswith("/uploads/"):
-        raise HTTPException(400, LOCAL_IMAGE_PATH_ERROR)
+    if cleaned_reference.startswith("/"):
+        raise HTTPException(400, HTTPS_IMAGE_URL_ERROR)
 
     parsed_reference = urlparse(cleaned_reference)
-    if parsed_reference.scheme and parsed_reference.scheme.lower() not in {"http", "https"}:
-        raise HTTPException(400, "Only http(s) image URLs or /uploads/... paths are supported.")
+    if parsed_reference.scheme.lower() != "https":
+        raise HTTPException(400, HTTPS_IMAGE_URL_ERROR)
 
-    return canonicalize_image_reference(cleaned_reference)
-
-
-def canonicalize_image_reference(image_reference: str) -> str:
-    cleaned_reference = str(image_reference or "").strip()
-    if not cleaned_reference:
-        return ""
-
-    if cleaned_reference.startswith("uploads/"):
-        return f"/{cleaned_reference}"
-
-    parsed_reference = urlparse(cleaned_reference)
-    if parsed_reference.scheme.lower() in {"http", "https"}:
-        if parsed_reference.path.startswith("/uploads/") and is_private_upload_host(parsed_reference.hostname):
-            normalized_path = parsed_reference.path or ""
-            if parsed_reference.query:
-                normalized_path = f"{normalized_path}?{parsed_reference.query}"
-            return normalized_path
-        return cleaned_reference
+    if not parsed_reference.netloc:
+        raise HTTPException(400, HTTPS_IMAGE_URL_ERROR)
 
     return cleaned_reference
-
-
-def safe_image_reference(image_reference: Optional[str]) -> str:
-    cleaned_reference = str(image_reference or "").strip()
-    if not cleaned_reference:
-        return ""
-
-    try:
-        return validate_image_reference(cleaned_reference)
-    except HTTPException:
-        return ""
-
-
-def is_private_upload_host(hostname: Optional[str]) -> bool:
-    normalized_hostname = str(hostname or "").strip().lower()
-    if not normalized_hostname:
-        return False
-
-    if normalized_hostname in {"localhost", "0.0.0.0"} or normalized_hostname.endswith(".local"):
-        return True
-
-    try:
-        host_ip = ipaddress.ip_address(normalized_hostname)
-    except ValueError:
-        return False
-
-    return host_ip.is_loopback or host_ip.is_private
-
-
-def guess_image_suffix(original_name: str, content_type: str) -> str:
-    suffix = Path(original_name or "").suffix.lower()
-    if suffix in ALLOWED_IMAGE_EXTENSIONS:
-        return suffix
-
-    guessed_suffix = mimetypes.guess_extension((content_type or "").split(";", 1)[0].strip())
-    if guessed_suffix == ".jpe":
-        guessed_suffix = ".jpg"
-
-    if guessed_suffix and guessed_suffix.lower() in ALLOWED_IMAGE_EXTENSIONS:
-        return guessed_suffix.lower()
-
-    return ".jpg"
-
-
-def save_image_bytes(content: bytes, original_name: str, content_type: str) -> str:
-    if not content:
-        raise HTTPException(400, f"{original_name or 'Image'} is empty.")
-
-    filename = f"{uuid4().hex}{guess_image_suffix(original_name, content_type)}"
-    destination_path = os.path.join(UPLOAD_IMAGES_DIR, filename)
-
-    with open(destination_path, "wb") as destination_file:
-        destination_file.write(content)
-
-    return f"/uploads/images/{filename}"
 
 
 def normalize_image_urls(image_url: Optional[str], image_urls: Optional[list[str]]) -> list[str]:
@@ -423,16 +344,12 @@ def parse_image_urls(raw_image_urls: Optional[str], raw_image_url: Optional[str]
         try:
             decoded = json.loads(raw_image_urls)
             if isinstance(decoded, list):
-                image_urls = [
-                    safe_image_reference(str(item).strip())
-                    for item in decoded
-                    if safe_image_reference(str(item).strip())
-                ]
+                image_urls = [str(item).strip() for item in decoded if str(item).strip()]
         except json.JSONDecodeError:
             image_urls = []
 
     if not image_urls and raw_image_url:
-        fallback_url = safe_image_reference(raw_image_url)
+        fallback_url = str(raw_image_url).strip()
         if fallback_url:
             image_urls = [fallback_url]
 
@@ -464,59 +381,14 @@ def get_liked_posts_by_user(username: str):
 
 
 @app.post("/api/uploads/images")
-async def upload_images(files: list[UploadFile] = File(...)):
-    if not files:
-        raise HTTPException(400, "Please choose at least one image.")
-
-    if len(files) > MAX_POST_IMAGES:
-        raise HTTPException(400, f"You can upload at most {MAX_POST_IMAGES} images at a time.")
-
-    uploaded_urls: list[str] = []
-
-    for upload in files:
-        content_type = (upload.content_type or "").lower()
-        if not content_type.startswith("image/"):
-            raise HTTPException(400, f"{upload.filename or 'File'} is not an image.")
-
-        original_name = upload.filename or "image"
-        content = await upload.read()
-        uploaded_urls.append(save_image_bytes(content, original_name, content_type))
-
-    return {"uploaded_urls": uploaded_urls}
+async def upload_images():
+    raise HTTPException(400, "Local file uploads are disabled. Please submit https image URLs instead.")
 
 
 @app.post("/api/uploads/image-url")
 async def upload_image_from_url(req: UploadImageUrlRequest):
-    source_url = validate_image_reference(req.image_url)
-    parsed_source_url = urlparse(source_url)
-
-    if parsed_source_url.scheme.lower() not in {"http", "https"}:
-        raise HTTPException(400, "Please provide a valid http(s) image URL.")
-
-    try:
-        remote_request = UrlRequest(
-            source_url,
-            headers={
-                "User-Agent": "HKUgram/1.0",
-                "Accept": "image/*",
-            },
-        )
-        with urlopen(remote_request, timeout=15) as response:
-            content_type = str(response.headers.get("Content-Type", "")).split(";", 1)[0].strip().lower()
-            if not content_type.startswith("image/"):
-                raise HTTPException(400, "The provided URL did not return an image.")
-
-            content = response.read(MAX_REMOTE_IMAGE_BYTES + 1)
-    except HTTPException:
-        raise
-    except (HTTPError, URLError, TimeoutError, ValueError) as exc:
-        raise HTTPException(400, f"Could not download the image URL: {exc}") from exc
-
-    if len(content) > MAX_REMOTE_IMAGE_BYTES:
-        raise HTTPException(400, "The remote image is too large. Maximum size is 10 MB.")
-
-    uploaded_url = save_image_bytes(content, Path(parsed_source_url.path).name or "image", content_type)
-    return {"uploaded_url": uploaded_url, "uploaded_urls": [uploaded_url]}
+    normalized_url = validate_image_reference(req.image_url)
+    return {"uploaded_url": normalized_url, "uploaded_urls": [normalized_url]}
 
 # ===================== API 端点 =====================
 @app.get("/users")
@@ -745,10 +617,11 @@ def get_feed(
     sort: str = "time", 
     sort_order: str = "desc", 
     limit: int = 50, 
+    page: int = 1,
     search: Optional[str] = None, 
     filter_date: Optional[str] = None,
     viewer: Optional[str] = None,
-    
+    paginated: bool = False,
 ):
 
 
@@ -758,8 +631,10 @@ def get_feed(
     else:  # sort == "popularity"
         order_by = "p.likes_count DESC, p.timestamp DESC, p.post_id DESC" if sort_order == "desc" else "p.likes_count ASC, p.timestamp ASC, p.post_id ASC"
 
+    normalized_limit = max(1, limit)
+
     conn = get_conn()
-    query = f"""
+    base_query = """
         SELECT p.post_id as id, u.username, p.content as text_content, 
                p.image_url, p.image_urls, p.timestamp as created_at, p.likes_count as like_count
         FROM posts p JOIN users u ON p.user_id = u.user_id
@@ -779,11 +654,19 @@ def get_feed(
         params.append(filter_date)
     
     if where_conditions:
-        query += " WHERE " + " AND ".join(where_conditions)
-    
-    query += f" ORDER BY {order_by} LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(query, params).fetchall()
+        base_query += " WHERE " + " AND ".join(where_conditions)
+
+    total_posts_row = conn.execute(
+        f"SELECT COUNT(*) as count FROM ({base_query}) as filtered_posts",
+        params,
+    ).fetchone()
+    total_posts = int(total_posts_row["count"] if total_posts_row else 0)
+    total_pages = max(1, (total_posts + normalized_limit - 1) // normalized_limit)
+    current_page = min(max(1, page), total_pages)
+    offset = (current_page - 1) * normalized_limit
+
+    query = f"{base_query} ORDER BY {order_by} LIMIT ? OFFSET ?"
+    rows = conn.execute(query, [*params, normalized_limit, offset]).fetchall()
     
     # Get liked posts for viewer
     liked_posts = get_liked_posts_by_user(viewer) if viewer else set()
@@ -795,6 +678,20 @@ def get_feed(
         result.append(post_dict)
     
     conn.close()
+
+    if paginated:
+        return {
+            "posts": result,
+            "pagination": {
+                "page": current_page,
+                "limit": normalized_limit,
+                "total_posts": total_posts,
+                "total_pages": total_pages,
+                "has_previous": current_page > 1,
+                "has_next": current_page < total_pages,
+            },
+        }
+
     return result
 
 @app.get("/users/{username}/posts")
