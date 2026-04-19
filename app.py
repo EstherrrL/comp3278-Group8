@@ -617,10 +617,11 @@ def get_feed(
     sort: str = "time", 
     sort_order: str = "desc", 
     limit: int = 50, 
+    page: int = 1,
     search: Optional[str] = None, 
     filter_date: Optional[str] = None,
     viewer: Optional[str] = None,
-    
+    paginated: bool = False,
 ):
 
 
@@ -630,8 +631,10 @@ def get_feed(
     else:  # sort == "popularity"
         order_by = "p.likes_count DESC, p.timestamp DESC, p.post_id DESC" if sort_order == "desc" else "p.likes_count ASC, p.timestamp ASC, p.post_id ASC"
 
+    normalized_limit = max(1, limit)
+
     conn = get_conn()
-    query = f"""
+    base_query = """
         SELECT p.post_id as id, u.username, p.content as text_content, 
                p.image_url, p.image_urls, p.timestamp as created_at, p.likes_count as like_count
         FROM posts p JOIN users u ON p.user_id = u.user_id
@@ -651,11 +654,19 @@ def get_feed(
         params.append(filter_date)
     
     if where_conditions:
-        query += " WHERE " + " AND ".join(where_conditions)
-    
-    query += f" ORDER BY {order_by} LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(query, params).fetchall()
+        base_query += " WHERE " + " AND ".join(where_conditions)
+
+    total_posts_row = conn.execute(
+        f"SELECT COUNT(*) as count FROM ({base_query}) as filtered_posts",
+        params,
+    ).fetchone()
+    total_posts = int(total_posts_row["count"] if total_posts_row else 0)
+    total_pages = max(1, (total_posts + normalized_limit - 1) // normalized_limit)
+    current_page = min(max(1, page), total_pages)
+    offset = (current_page - 1) * normalized_limit
+
+    query = f"{base_query} ORDER BY {order_by} LIMIT ? OFFSET ?"
+    rows = conn.execute(query, [*params, normalized_limit, offset]).fetchall()
     
     # Get liked posts for viewer
     liked_posts = get_liked_posts_by_user(viewer) if viewer else set()
@@ -667,6 +678,20 @@ def get_feed(
         result.append(post_dict)
     
     conn.close()
+
+    if paginated:
+        return {
+            "posts": result,
+            "pagination": {
+                "page": current_page,
+                "limit": normalized_limit,
+                "total_posts": total_posts,
+                "total_pages": total_pages,
+                "has_previous": current_page > 1,
+                "has_next": current_page < total_pages,
+            },
+        }
+
     return result
 
 @app.get("/users/{username}/posts")

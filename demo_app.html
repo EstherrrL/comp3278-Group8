@@ -114,6 +114,86 @@
       color: #667085;
     }
 
+    .feed-pagination-shell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .feed-pagination-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.55rem 1rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(200, 90, 27, 0.12);
+      color: #64748b;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .feed-pagination-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+    }
+
+    .feed-page-button {
+      min-width: 2.85rem;
+      height: 2.85rem;
+      padding: 0 0.8rem;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: #1f2937;
+      font-size: 1rem;
+      font-weight: 700;
+      transition: background-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+      cursor: pointer;
+    }
+
+    .feed-page-button:hover:not(:disabled) {
+      background: rgba(200, 90, 27, 0.10);
+      color: #c85a1b;
+      transform: translateY(-1px);
+    }
+
+    .feed-page-button:disabled {
+      opacity: 0.38;
+      cursor: default;
+    }
+
+    .feed-page-button-active {
+      background: #10224b;
+      color: #fff;
+      box-shadow: 0 16px 30px rgba(16, 34, 75, 0.18);
+    }
+
+    .feed-page-button-active:hover {
+      background: #10224b;
+      color: #fff;
+      transform: none;
+    }
+
+    .feed-page-chevron {
+      font-size: 1.65rem;
+      line-height: 1;
+      font-weight: 400;
+    }
+
+    .feed-page-ellipsis {
+      min-width: 2.2rem;
+      text-align: center;
+      color: #475569;
+      font-size: 1.15rem;
+      letter-spacing: 0.08em;
+    }
+
     .reply-thread {
       margin-left: 1.2rem;
       padding-left: 1rem;
@@ -414,6 +494,7 @@
             </div>
           </div>
           <div id="feed-container" class="mt-6 space-y-5"></div>
+          <div id="feed-pagination" class="mt-8"></div>
         </section>
 
         <section id="view-rankings" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
@@ -578,6 +659,9 @@ window.addEventListener('DOMContentLoaded', () => {
       feedSortOrder: "desc",       // 'desc' for newest/most popular first, 'asc' for oldest/least popular first
       feedFilterDate: "",          // filter to specific date (YYYY-MM-DD)
       feedLimit: 20,
+      feedPage: 1,
+      feedTotalPages: 1,
+      feedTotalPosts: 0,
       feedPosts: [],
       rankingsData: null,
       replyState: {},
@@ -619,7 +703,8 @@ window.addEventListener('DOMContentLoaded', () => {
         feedSort: STATE.feedSort,
         feedSortOrder: STATE.feedSortOrder,
         feedFilterDate: STATE.feedFilterDate,
-        feedLimit: STATE.feedLimit
+        feedLimit: STATE.feedLimit,
+        feedPage: STATE.feedPage
       }));
     }
 
@@ -641,6 +726,9 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         if ([10, 20, 50].includes(Number(parsedState.feedLimit))) {
           STATE.feedLimit = Number(parsedState.feedLimit);
+        }
+        if (Number.isInteger(Number(parsedState.feedPage)) && Number(parsedState.feedPage) > 0) {
+          STATE.feedPage = Number(parsedState.feedPage);
         }
         if (["home", "rankings", "create", "profile", "ai"].includes(parsedState.currentView)) {
           STATE.currentView = parsedState.currentView;
@@ -885,6 +973,101 @@ window.addEventListener('DOMContentLoaded', () => {
 
     function sortFeedPosts(posts) {
       return [...posts].sort(compareFeedPosts);
+    }
+
+    function resetFeedPagination() {
+      STATE.feedPage = 1;
+      STATE.feedTotalPages = 1;
+      STATE.feedTotalPosts = 0;
+    }
+
+    function buildFeedPaginationSequence(totalPages, currentPage) {
+      if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+      }
+
+      const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+      if (currentPage <= 3) {
+        pages.add(2);
+        pages.add(3);
+        pages.add(4);
+      }
+      if (currentPage >= totalPages - 2) {
+        pages.add(totalPages - 1);
+        pages.add(totalPages - 2);
+        pages.add(totalPages - 3);
+      }
+
+      const orderedPages = [...pages]
+        .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
+        .sort((leftPage, rightPage) => leftPage - rightPage);
+
+      const sequence = [];
+      orderedPages.forEach((pageNumber, index) => {
+        if (index > 0 && pageNumber - orderedPages[index - 1] > 1) {
+          sequence.push("ellipsis");
+        }
+        sequence.push(pageNumber);
+      });
+      return sequence;
+    }
+
+    function renderFeedPagination() {
+      const paginationContainer = $("feed-pagination");
+      if (!paginationContainer) {
+        return;
+      }
+
+      if (!STATE.feedTotalPosts) {
+        paginationContainer.innerHTML = "";
+        return;
+      }
+
+      const startPost = (STATE.feedPage - 1) * STATE.feedLimit + 1;
+      const endPost = Math.min(STATE.feedPage * STATE.feedLimit, STATE.feedTotalPosts);
+      const paginationItems = buildFeedPaginationSequence(STATE.feedTotalPages, STATE.feedPage);
+
+      paginationContainer.innerHTML = `
+        <div class="feed-pagination-shell">
+          <div class="feed-pagination-summary">Showing ${escapeHtml(startPost)}-${escapeHtml(endPost)} of ${escapeHtml(STATE.feedTotalPosts)} posts</div>
+          ${STATE.feedTotalPages > 1 ? `
+            <div class="feed-pagination-nav" aria-label="Feed pagination">
+              <button type="button" class="feed-page-button" data-page-target="${STATE.feedPage - 1}" ${STATE.feedPage <= 1 ? "disabled" : ""} aria-label="Previous page">
+                <span class="feed-page-chevron" aria-hidden="true">‹</span>
+              </button>
+              ${paginationItems.map((item) => {
+                if (item === "ellipsis") {
+                  return '<span class="feed-page-ellipsis" aria-hidden="true">...</span>';
+                }
+
+                const isActive = item === STATE.feedPage;
+                return `
+                  <button
+                    type="button"
+                    class="feed-page-button ${isActive ? "feed-page-button-active" : ""}"
+                    data-page-target="${item}"
+                    ${isActive ? 'aria-current="page"' : ""}
+                    aria-label="Page ${item}"
+                  >${item}</button>
+                `;
+              }).join("")}
+              <button type="button" class="feed-page-button" data-page-target="${STATE.feedPage + 1}" ${STATE.feedPage >= STATE.feedTotalPages ? "disabled" : ""} aria-label="Next page">
+                <span class="feed-page-chevron" aria-hidden="true">›</span>
+              </button>
+            </div>
+          ` : ""}
+        </div>
+      `;
+    }
+
+    function setFeedPage(nextPage) {
+      const normalizedPage = Math.min(Math.max(1, Number(nextPage) || 1), Math.max(STATE.feedTotalPages, 1));
+      if (normalizedPage === STATE.feedPage) {
+        return;
+      }
+      STATE.feedPage = normalizedPage;
+      saveUiState();
+      refreshFeed();
     }
 
     async function fetchJson(url, options = {}) {
@@ -1429,7 +1612,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     async function refreshFeed() {
       const container = $("feed-container");
+      const paginationContainer = $("feed-pagination");
       container.innerHTML = '<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">Loading feed...</div>';
+      if (paginationContainer) {
+        paginationContainer.innerHTML = "";
+      }
 
       saveUiState();
       updateSortButtons();
@@ -1437,15 +1624,20 @@ window.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams({
           sort: STATE.feedSort,
           sort_order: STATE.feedSortOrder,
-          
-          
           limit: String(STATE.feedLimit),
+          page: String(STATE.feedPage),
+          paginated: "true",
           viewer: STATE.currentUser
         });
         if (STATE.feedFilterDate) {
           params.append("filter_date", STATE.feedFilterDate);
         }
-        const posts = await fetchJson(`${API_BASE}/feed?${params.toString()}`);
+        const payload = await fetchJson(`${API_BASE}/feed?${params.toString()}`);
+        const posts = Array.isArray(payload?.posts) ? payload.posts : [];
+        const pagination = payload?.pagination || {};
+        STATE.feedPage = Math.max(1, Number(pagination.page || STATE.feedPage || 1));
+        STATE.feedTotalPages = Math.max(1, Number(pagination.total_pages || 1));
+        STATE.feedTotalPosts = Math.max(0, Number(pagination.total_posts || 0));
         STATE.feedPosts = sortFeedPosts(posts.map((post) => ({
           ...post,
           liked_by_viewer: Boolean(post.liked_by_viewer)
@@ -1454,13 +1646,17 @@ window.addEventListener('DOMContentLoaded', () => {
         if (!STATE.feedPosts.length) {
           const dateInfo = STATE.feedFilterDate ? ` on ${STATE.feedFilterDate}` : "";
           container.innerHTML = `<div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-500 ring-1 ring-orange-100">No posts${dateInfo}.</div>`;
+          renderFeedPagination();
           return;
         }
         STATE.feedPosts.forEach((post) => {
           container.appendChild(renderPostCard(post));
           loadComments(post.id);
         });
+        renderFeedPagination();
+        saveUiState();
       } catch (error) {
+        resetFeedPagination();
         container.innerHTML = `<div class="rounded-[1.5rem] bg-rose-50 px-5 py-4 text-sm text-rose-700">${escapeHtml(error.message)}</div>`;
       }
     }
@@ -1486,6 +1682,7 @@ window.addEventListener('DOMContentLoaded', () => {
         });
         $("post-content").value = "";
         clearCreateImageDraft();
+        STATE.feedPage = 1;
         setViewMessage("post-feedback", payload.message || "Post published successfully.", "success");
         switchView("home");
       } catch (error) {
@@ -1889,6 +2086,7 @@ window.addEventListener('DOMContentLoaded', () => {
             STATE.feedSort = selectedSort;
             STATE.feedSortOrder = "desc";
           }
+          STATE.feedPage = 1;
           saveUiState();
           updateSortButtons();
           refreshFeed();
@@ -1905,13 +2103,22 @@ window.addEventListener('DOMContentLoaded', () => {
       $("feed-limit").value = String(STATE.feedLimit);
       $("feed-filter-date").addEventListener("change", (event) => {
         STATE.feedFilterDate = event.target.value;
+        STATE.feedPage = 1;
         saveUiState();
         refreshFeed();
       });
       $("feed-limit").addEventListener("change", (event) => {
         STATE.feedLimit = Number(event.target.value);
+        STATE.feedPage = 1;
         saveUiState();
         refreshFeed();
+      });
+      $("feed-pagination").addEventListener("click", (event) => {
+        const targetButton = event.target.closest("[data-page-target]");
+        if (!targetButton || targetButton.disabled) {
+          return;
+        }
+        setFeedPage(targetButton.dataset.pageTarget);
       });
       $("refresh-feed-button").addEventListener("click", refreshFeed);
       $("refresh-rankings-button").addEventListener("click", refreshRankings);
