@@ -513,7 +513,6 @@
         <section id="view-create" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
           <p class="panel-tag">Create</p>
           <h3 class="mt-2 text-3xl font-extrabold">Create a New Post</h3>
-          <div id="post-feedback" class="message-neutral mt-5 rounded-2xl px-4 py-3 text-sm">A post created by the current user will appear in the feed immediately.</div>
           <textarea id="post-content" class="mt-5 h-40 w-full rounded-[1.6rem] border border-orange-100 bg-white px-5 py-4 outline-none transition focus:border-orange-400" placeholder="Write something here. You can post text only or attach an HTTPS image URL."></textarea>
           <div class="mt-4 rounded-[1.5rem] border border-orange-100 bg-white px-5 py-5">
             <div class="text-base font-extrabold text-slate-900">Add images</div>
@@ -532,13 +531,17 @@
         </section>
 
         <section id="view-profile" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+          <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <div class="space-y-4">
               <p class="panel-tag">Profile</p>
-              <h3 class="mt-2 text-3xl font-extrabold">Profile</h3>
-              <p class="mt-3 text-sm leading-7 text-slate-600">This page shows the current user's post history using GET /users/{username}/posts.</p>
+              <div>
+                <h3 class="text-3xl font-extrabold">Profile</h3>
+                <div class="mt-3">
+                  <button id="refresh-profile-button" class="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">Refresh Profile</button>
+                </div>
+              </div>
             </div>
-            <div class="rounded-[1.5rem] bg-white px-5 py-4 ring-1 ring-orange-100">
+            <div class="rounded-[1.5rem] bg-white px-5 py-4 ring-1 ring-orange-100 lg:justify-self-end lg:w-full lg:max-w-[320px]">
               <div class="text-sm text-slate-500">Current User</div>
               <div id="profile-username-display" class="mt-1 text-2xl font-extrabold text-slate-900">-</div>
               <div id="profile-username-edit" class="hidden-view mt-3 space-y-2">
@@ -552,10 +555,7 @@
               <button id="profile-edit-username-btn" class="mt-3 rounded-full border border-orange-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-orange-400 hover:text-ember">Edit Username</button>
             </div>
           </div>
-          <div class="mt-5 flex justify-end">
-            <button id="refresh-profile-button" class="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">Refresh Profile</button>
-          </div>
-          <div id="profile-posts" class="mt-6 space-y-4"></div>
+          <div id="profile-posts" class="mt-5 space-y-4"></div>
         </section>
 
         <section id="view-ai" class="app-view hidden-view glass rounded-[2rem] p-5 shadow-card sm:p-6">
@@ -840,6 +840,35 @@ window.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
+    function isAcceptedImageUrlFormat(imageUrl) {
+      try {
+        const parsedUrl = new URL(String(imageUrl || "").trim());
+        return parsedUrl.protocol === "https:" && Boolean(parsedUrl.hostname);
+      } catch {
+        return false;
+      }
+    }
+
+    function isInvalidImageUrlFormatMessage(message) {
+      const normalizedMessage = String(message || "").toLowerCase();
+      return normalizedMessage.includes("only https image urls are supported")
+        || normalizedMessage.includes("local filesystem image paths are not supported")
+        || normalizedMessage.includes("please use an https image url")
+        || normalizedMessage.includes("invalid url");
+    }
+
+    function getImageUrlFormatPrompt() {
+      return "Please upload a valid URL format.";
+    }
+
+    function getImageUrlErrorMessage(error) {
+      const rawMessage = String(error?.message || "").trim();
+      if (isInvalidImageUrlFormatMessage(rawMessage)) {
+        return getImageUrlFormatPrompt();
+      }
+      return rawMessage || "图片 URL 提交失败";
+    }
+
     async function uploadImageFromUrl(imageUrl) {
       const response = await fetch(`${API_BASE}/api/uploads/image-url`, {
         method: "POST",
@@ -877,6 +906,13 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      if (!isAcceptedImageUrlFormat(rawUrl)) {
+        const errorMessage = getImageUrlFormatPrompt();
+        setViewMessage("post-feedback", errorMessage, "error");
+        alert(errorMessage);
+        return;
+      }
+
       try {
         setViewMessage("post-feedback", "Validating image URL...", "neutral");
         const uploadedUrl = await uploadImageFromUrl(rawUrl);
@@ -887,7 +923,11 @@ window.addEventListener('DOMContentLoaded', () => {
         renderCreateImageDraft();
         setViewMessage("post-feedback", "HTTPS image URL added successfully.", "success");
       } catch (error) {
-        setViewMessage("post-feedback", error.message, "error");
+        const errorMessage = getImageUrlErrorMessage(error);
+        setViewMessage("post-feedback", errorMessage, "error");
+        if (errorMessage === getImageUrlFormatPrompt()) {
+          alert(errorMessage);
+        }
       }
     }
 
@@ -909,6 +949,11 @@ window.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      if (!isAcceptedImageUrlFormat(rawUrl)) {
+        alert(getImageUrlFormatPrompt());
+        return;
+      }
+
       try {
         const uploadedUrl = await uploadImageFromUrl(rawUrl);
         if (uploadedUrl && !editState.existingImageUrls.includes(uploadedUrl)) {
@@ -917,7 +962,7 @@ window.addEventListener('DOMContentLoaded', () => {
         input.value = "";
         refreshProfile();
       } catch (error) {
-        alert(error.message);
+        alert(getImageUrlErrorMessage(error));
       }
     }
 
