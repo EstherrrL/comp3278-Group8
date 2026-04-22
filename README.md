@@ -159,13 +159,18 @@ All endpoints return JSON. Errors use standard HTTP status codes (`400`, `403`, 
 
 ## Vanna AI Integration
 
-Translates natural-language questions into SQL queries executed against `social_app.db`.
+Vanna is configured in `app.py` with the following components:
 
-| Component | Value |
+| Component | Implementation |
 |---|---|
-| LLM | DeepSeek (`deepseek-chat`) |
-| SQL runner | SQLite (`social_app.db`) |
-| Env variable | `DEEPSEEK_API_KEY` |
+| LLM | DeepSeek (`deepseek-chat`) via `OpenAILlmService` |
+| SQL runner | `SqliteRunner` pointing at `social_app.db` |
+| Tools | `RunSqlTool`, `VisualizeDataTool` |
+| Memory | `DemoAgentMemory` (in-memory, up to 1 000 items) |
+| User resolver | `SimpleUserResolver` — all requests run as `student@hku.hk` |
+| Max iterations | 50 tool calls per chat turn |
+
+Set the required environment variable before starting the server:
 
 ```bash
 export DEEPSEEK_API_KEY=your_key_here
