@@ -22,9 +22,24 @@ This document covers the **database layer** and the **backend API** of the proje
   - [Database Files](#database-files)
   - [Setup \& Usage](#setup--usage)
     - [Prerequisites](#prerequisites)
+      - [Windows](#windows)
+      - [macOS](#macos)
+      - [Debian/Ubuntu](#debianubuntu)
+      - [Fedora-based](#fedora-based)
+      - [Arch-based](#arch-based)
     - [First run](#first-run)
     - [Manual initialisation](#manual-initialisation)
     - [Getting a database connection](#getting-a-database-connection)
+  - [Setting up multiple devices](#setting-up-multiple-devices)
+    - [Prerequisite](#prerequisite)
+      - [MACOS](#macos-1)
+      - [Windows](#windows-1)
+      - [Linux](#linux)
+    - [Opening the site](#opening-the-site)
+      - [1. using local IP (Only for server pc)](#1-using-local-ip-only-for-server-pc)
+      - [2. using the IP you just found](#2-using-the-ip-you-just-found)
+      - [3. Double cliking the HTML file](#3-double-cliking-the-html-file)
+    - [Debugging](#debugging)
   - [Running Tests](#running-tests)
     - [Demo mode — reset \& seed data](#demo-mode--reset--seed-data)
     - [Check mode — validate existing data only](#check-mode--validate-existing-data-only)
@@ -36,8 +51,11 @@ This document covers the **database layer** and the **backend API** of the proje
     - [API Endpoints](#api-endpoints)
       - [`POST /users`](#post-users)
       - [`POST /posts`](#post-posts)
+      - [`PUT /posts/{post_id}`](#put-postspost_id)
+      - [`DELETE /posts/{post_id}`](#delete-postspost_id)
       - [`POST /likes/toggle`](#post-likestoggle)
       - [`POST /comments`](#post-comments)
+      - [`DELETE /comments/{comment_id}`](#delete-commentscomment_id)
       - [`GET /feed?sort=time&limit=20`](#get-feedsorttimelimit20)
       - [`GET /users/{username}/posts`](#get-usersusernameposts)
       - [`GET /posts/{post_id}/comments`](#get-postspost_idcomments)
@@ -65,107 +83,67 @@ comp3278-Group8/
 
 ## Database Overview
 
-| Item | Value |
-|---|---|
-| Engine | SQLite 3 |
-| File | `social_app.db` |
-| Module | `database.py` |
-| Foreign Keys | Enabled (`PRAGMA foreign_keys = ON`) |
-| Tables | 4 (`users`, `posts`, `likes`, `comments`) |
-| Indexes | 7 |
-
-The database module (`database.py`) is responsible for:
-
-1. Defining the full schema (`SCHEMA_SQL`)
-2. `init_db()` — idempotent initialisation & automatic migration of existing databases
-3. `get_conn()` — returns a connection with `Row` factory and foreign-key enforcement enabled
-4. Exposing `DB_PATH` so that `app.py` and `test_db.py` share a single source of truth
+SQLite 3 · 4 tables (`users`, `posts`, `likes`, `comments`) · 8 indexes  
+Managed by `database.py`: schema definition, `init_db()`, `get_conn()`.
 
 ---
 
 ## Schema
 
 ### `users`
-
-Stores registered user accounts.
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `user_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique user identifier |
-| `username` | TEXT | NOT NULL UNIQUE | Display name (used in all API calls) |
-| `email` | TEXT | UNIQUE | Optional email address |
-| `bio` | TEXT | — | Short personal bio |
-| `profile_pic` | TEXT | — | URL of the user's avatar image |
-| `timestamp` | TEXT | NOT NULL DEFAULT `datetime('now')` | Account creation time |
-
----
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | INTEGER | PK AUTOINCREMENT |
+| `username` | TEXT | NOT NULL UNIQUE |
+| `email` | TEXT | UNIQUE |
+| `bio` | TEXT | — |
+| `profile_pic` | TEXT | URL |
+| `timestamp` | TEXT | DEFAULT `datetime('now')` |
 
 ### `posts`
-
-Stores text and/or image posts created by users.
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `post_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique post identifier |
-| `user_id` | INTEGER | NOT NULL, FK → `users.user_id` | Author of the post |
-| `content` | TEXT | — | Text body of the post |
-| `image_url` | TEXT | — | Legacy single image URL (kept for backward compatibility) |
-| `image_urls` | TEXT | — | JSON array of image URLs (supersedes `image_url`) |
-| `timestamp` | TEXT | NOT NULL DEFAULT `datetime('now')` | Post creation time |
-| `likes_count` | INTEGER | NOT NULL DEFAULT 0 | Denormalised like count for fast feed sorting |
-| `updated_at` | TEXT | — | Last-edited time; set by `PUT /posts/{post_id}` |
-
-> **Why denormalise `likes_count`?**  
-> Sorting a large feed by popularity requires counting likes per post on every request. Maintaining a counter column keeps the `ORDER BY likes_count DESC` query O(1) per row, at the cost of two extra writes per toggle-like operation.
-
----
+| Column | Type | Notes |
+|---|---|---|
+| `post_id` | INTEGER | PK AUTOINCREMENT |
+| `user_id` | INTEGER | FK → `users` |
+| `content` | TEXT | — |
+| `image_urls` | TEXT | JSON array of image URLs |
+| `timestamp` | TEXT | DEFAULT `datetime('now')` |
+| `likes_count` | INTEGER | Denormalised counter (DEFAULT 0) |
+| `updated_at` | TEXT | Set on edit |
 
 ### `likes`
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | INTEGER | PK, FK → `users` |
+| `post_id` | INTEGER | PK, FK → `posts` |
+| `timestamp` | TEXT | DEFAULT `datetime('now')` |
 
-Many-to-many relationship between users and posts (toggle like / unlike).
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `user_id` | INTEGER | NOT NULL, PK, FK → `users.user_id` | User who liked the post |
-| `post_id` | INTEGER | NOT NULL, PK, FK → `posts.post_id` | Post that was liked |
-| `timestamp` | TEXT | NOT NULL DEFAULT `datetime('now')` | Time of the like action |
-
-- The composite primary key `(user_id, post_id)` prevents duplicate likes.
-- **Toggle logic** (in `app.py`): check existence → `DELETE` if present, `INSERT` if absent; update `posts.likes_count` accordingly.
-
----
+Composite PK `(user_id, post_id)` prevents duplicate likes. Toggle logic: DELETE if exists, INSERT if not.
 
 ### `comments`
-
-Stores top-level comments and threaded replies on posts.
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `comment_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique comment identifier |
-| `user_id` | INTEGER | NOT NULL, FK → `users.user_id` | Author of the comment |
-| `post_id` | INTEGER | NOT NULL, FK → `posts.post_id` | Post being commented on |
-| `parent_comment_id` | INTEGER | FK → `comments.comment_id` | `NULL` = top-level comment; non-`NULL` = reply |
-| `content` | TEXT | NOT NULL | Comment text |
-| `timestamp` | TEXT | NOT NULL DEFAULT `datetime('now')` | Comment creation time |
-
-- Setting `parent_comment_id = NULL` creates a top-level comment.
-- Setting `parent_comment_id = <id>` creates a reply to that comment (one level of nesting is sufficient for the current UI).
-- `ON DELETE CASCADE` on the foreign key means deleting a parent comment also removes all its replies.
+| Column | Type | Notes |
+|---|---|---|
+| `comment_id` | INTEGER | PK AUTOINCREMENT |
+| `user_id` | INTEGER | FK → `users` |
+| `post_id` | INTEGER | FK → `posts` |
+| `parent_comment_id` | INTEGER | FK → `comments` (self-ref, NULL = top-level) |
+| `content` | TEXT | NOT NULL |
+| `timestamp` | TEXT | DEFAULT `datetime('now')` |
 
 ---
 
 ## Indexes
 
-| Index Name | Table | Column(s) | Purpose |
-|---|---|---|---|
-| `idx_users_username` | `users` | `username` | Fast user look-up by username |
-| `idx_posts_user_id` | `posts` | `user_id` | Fetch all posts by a specific user |
-| `idx_posts_timestamp` | `posts` | `timestamp DESC` | Chronological feed (`ORDER BY timestamp DESC`) |
-| `idx_posts_likes_count` | `posts` | `likes_count DESC` | Popularity feed (`ORDER BY likes_count DESC`) |
-| `idx_posts_date` | `posts` | `DATE(timestamp)` | Date-filter feed (`GET /feed?filter_date=`) |
-| `idx_likes_post_id` | `likes` | `post_id` | Count / list users who liked a post |
-| `idx_comments_post_id` | `comments` | `post_id` | Fetch all comments for a post |
-| `idx_comments_parent` | `comments` | `parent_comment_id` | Fetch replies to a specific comment |
+| Index | Table | Column(s) |
+|---|---|---|
+| `idx_users_username` | `users` | `username` |
+| `idx_posts_user_id` | `posts` | `user_id` |
+| `idx_posts_timestamp` | `posts` | `timestamp DESC` |
+| `idx_posts_likes_count` | `posts` | `likes_count DESC` |
+| `idx_posts_date` | `posts` | `DATE(timestamp)` |
+| `idx_likes_post_id` | `likes` | `post_id` |
+| `idx_comments_post_id` | `comments` | `post_id` |
+| `idx_comments_parent` | `comments` | `parent_comment_id` |
 
 ---
 
@@ -178,11 +156,10 @@ Stores top-level comments and threaded replies on posts.
 │ user_id    PK │────►│ post_id           PK │
 │ username      │     │ user_id           FK │
 │ email         │     │ content              │
-│ bio           │     │ image_url            │
-│ profile_pic   │     │ image_urls           │
-│ timestamp     │     │ timestamp            │
-└───────┬───────┘     │ likes_count          │
-        │             │ updated_at           │
+│ bio           │     │ image_urls  (JSON)   │
+│ profile_pic   │     │ timestamp            │
+│ timestamp     │     │ likes_count (derived)│
+└───────┬───────┘     │ updated_at           │
         │             └──────────┬───────────┘
         │                        │
         │  ┌──────────────────┐  │
@@ -199,8 +176,8 @@ Stores top-level comments and threaded replies on posts.
         │  │ comment_id            PK │
         └─►│ user_id               FK │
            │ post_id               FK │◄── posts
-           │ parent_comment_id     FK │◄─┐
-           │ content                  │  │ (self-ref)
+           │ parent_comment_id     FK │◄─┐ (self-ref)
+           │ content                  │  │  parent_comment ──► replies_to ──► child_comment
            │ timestamp                │  │
            └──────────────────────────┘──┘
 ```
@@ -209,14 +186,11 @@ Stores top-level comments and threaded replies on posts.
 
 ## Key Design Decisions
 
-| Decision | Rationale |
-|---|---|
-| **SQLite** | Zero-config, file-based; ideal for a course demo with no production deployment requirement |
-| **Denormalised `likes_count`** | Avoids a `COUNT(*)` subquery on every feed request; counter is updated atomically within the toggle-like transaction |
-| **Composite PK on `likes`** | Enforces the one-like-per-user-per-post constraint at the database level, not just application level |
-| **Self-referencing FK on `comments`** | Supports threaded replies without adding a separate `replies` table |
-| **`ON DELETE CASCADE` everywhere** | Deleting a user automatically removes all their posts, likes, and comments, keeping referential integrity without manual cleanup |
-| **Idempotent `init_db()`** | Uses `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE` wrapped in `try/except`; safe to call on startup even when the database already exists or was created by an older version |
+- **Denormalised `likes_count`** — avoids a `COUNT(*)` subquery on every feed request; updated atomically on each like toggle
+- **Composite PK on `likes`** — enforces one-like-per-user-per-post at the DB level
+- **Self-referencing FK on `comments`** — supports threaded replies without a separate table
+- **`ON DELETE CASCADE`** — deleting a user/post/comment automatically cleans up all dependent rows
+- **Idempotent `init_db()`** — safe to call on every startup; uses `CREATE TABLE IF NOT EXISTS`
 
 ---
 
@@ -224,9 +198,9 @@ Stores top-level comments and threaded replies on posts.
 
 | File | Description |
 |---|---|
-| `database.py` | Schema definition, `init_db()`, `get_conn()`, `DB_PATH` constant |
-| `social_app.db` | SQLite binary database file (auto-created on first run) |
-| `test_db.py` | Test & demo-data seeding script (see below) |
+| `database.py` | Schema, `init_db()`, `get_conn()` |
+| `social_app.db` | SQLite file (auto-created on first run) |
+| `test_db.py` | Test & demo-data seeding script |
 
 ---
 
