@@ -7,16 +7,24 @@ Stack: **FastAPI** · **SQLite** · **Tailwind CSS** · **Vanna AI**
 
 ## Table of Contents
 
-- [Project Structure](#project-structure)
-- [Database](#database)
-- [Entity-Relationship Diagram](#entity-relationship-diagram)
-- [UI Design](#ui-design)
-- [Features & Functions](#features--functions)
-- [API Endpoints](#api-endpoints)
-- [Vanna AI Integration](#vanna-ai-integration)
-- [Setup & Usage](#setup--usage)
-- [Multi-device Access](#multi-device-access)
-- [Running Tests](#running-tests)
+- [comp3278-Group8](#comp3278-group8)
+  - [Table of Contents](#table-of-contents)
+  - [Project Structure](#project-structure)
+  - [Database](#database)
+    - [Schema](#schema)
+    - [Design Notes](#design-notes)
+    - [Indexes](#indexes)
+  - [Entity-Relationship Diagram](#entity-relationship-diagram)
+  - [UI Design](#ui-design)
+    - [Layout](#layout)
+    - [Tech Choices](#tech-choices)
+  - [Features \& Functions](#features--functions)
+  - [API Endpoints](#api-endpoints)
+  - [Vanna AI Integration](#vanna-ai-integration)
+  - [Setup \& Usage](#setup--usage)
+    - [Python installation (if needed)](#python-installation-if-needed)
+  - [Multi-device Access](#multi-device-access)
+  - [Running Tests](#running-tests)
 
 ---
 
@@ -230,3 +238,4 @@ python test_db.py --reset  # reset DB and seed demo data
 | Feed queries | Chronological and popularity ordering |
 | User history | Filter posts by username |
 | Cascade delete | Removing a user cleans up all related rows |
+li
